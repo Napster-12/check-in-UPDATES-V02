@@ -133,11 +133,11 @@
       <div id="studentForm" class="d-none">
         <div class="mb-3 text-start">
           <label class="form-label">Student Number</label>
-          <input name="student_number" class="form-control" placeholder="Enter Student Number">
+          <input name="student_number" class="form-control" placeholder="Enter Student Number" required>
         </div>
         <div class="mb-3 text-start">
           <label class="form-label">Type of Institution</label>
-          <select id="institutionType" name="institution_type" class="form-select">
+          <select id="institutionType" name="institution_type" class="form-select" required>
             <option value="">-- Select --</option>
             <option value="University">University</option>
             <option value="University of Technology">University of Technology</option>
@@ -147,14 +147,14 @@
 
         <div class="mb-3 text-start">
           <label class="form-label">Institution Name</label>
-          <select id="institutionName" name="institution_name" class="form-select">
+          <select id="institutionName" name="institution_name" class="form-select" required>
             <option value="">-- Select Institution --</option>
           </select>
         </div>
 
         <div class="mb-3 text-start">
           <label class="form-label">Department</label>
-          <select name="department" class="form-select">
+          <select name="department" class="form-select" required>
             <option value="">-- Select Department --</option>
             <option>DEVELOPERS</option>
             <option>MULTIMEDIA</option>
@@ -168,7 +168,7 @@
 
         <div class="mb-3 text-start">
           <label class="form-label">Select Mentor</label>
-          <select name="mentor_id" class="form-select">
+          <select name="mentor_id" class="form-select" required>
             <option value="">-- Select Mentor --</option>
             {% for mentor in mentors %}
               <option value="{{ mentor.id }}">{{ mentor.fullname }}</option>
@@ -181,7 +181,7 @@
       <div id="graduateForm" class="d-none">
         <div class="mb-3 text-start">
           <label class="form-label">Department</label>
-          <select name="department" class="form-select">
+          <select name="graduate_department" class="form-select" required>
             <option value="">-- Select Department --</option>
             <option>DEVELOPERS</option>
             <option>MULTIMEDIA</option>
@@ -195,7 +195,16 @@
 
         <div class="mb-3 text-start">
           <label class="form-label">Qualification</label>
-          <input name="qualification" class="form-control" placeholder="e.g. Diploma / Degree">
+          <input name="qualification" class="form-control" placeholder="e.g. Diploma / Degree" required>
+        </div>
+        <div class="mb-3 text-start">
+          <label class="form-label">Select Mentor</label>
+          <select name="mentor_id" class="form-select" required>
+            <option value="">-- Select Mentor --</option>
+            {% for mentor in mentors %}
+              <option value="{{ mentor.id }}">{{ mentor.fullname }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
 
@@ -203,7 +212,7 @@
       <div id="adminForm" class="d-none">
         <div class="mb-3 text-start">
           <label class="form-label">Type of User</label>
-          <select id="userType" name="user_type" class="form-select">
+          <select id="userType" name="user_type" class="form-select" required>
             <option value="">-- Select --</option>
             <option value="Mentor">Mentor</option>
             <option value="WIL Co-ordinator">WIL Co-ordinator</option>
@@ -213,7 +222,7 @@
 
         <div class="mb-3 text-start">
           <label class="form-label">Organization</label>
-          <select id="organization" name="organization" class="form-select">
+          <select id="organization" name="organization" class="form-select" required>
             <option value="">-- Select Organization --</option>
           </select>
         </div>
