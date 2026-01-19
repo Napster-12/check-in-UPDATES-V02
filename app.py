@@ -72,7 +72,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
 
     role = db.Column(db.String(50), nullable=False)
-    organization = db.Column(db.String(100), nullable=False)
+    organization = db.Column(db.String(100), nullable=False, default="N/A")  # Default for Graduates
     is_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -80,7 +80,7 @@ class User(UserMixin, db.Model):
     student_number = db.Column(db.String(50))
     department = db.Column(db.String(100))
     institution_type = db.Column(db.String(100))
-    wil_coordinator_id = Column(Integer)
+    wil_coordinator_id = db.Column(db.Integer)
 
     # Mentor mapping
     mentor_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -89,6 +89,10 @@ class User(UserMixin, db.Model):
         backref=db.backref('mentor', remote_side=[id]),
         lazy='dynamic'
     )
+
+    # Graduate field
+    qualification = db.Column(db.String(150))
+
 
     # Relationships
     checkins = db.relationship('CheckIn', backref='user', lazy=True)
@@ -172,6 +176,41 @@ def store_otp_in_session(user_id, otp):
         datetime.utcnow() + timedelta(minutes=5)
     ).isoformat()
 
+def notify_mentors(logbook_type):
+    mentors = User.query.filter_by(role="Mentor").all()
+
+    for mentor in mentors:
+        try:
+            msg = Message(
+                subject=f"New {logbook_type.upper()} Uploaded by {current_user.fullname}",
+                recipients=[mentor.email],
+                html=f"""
+                <div style="font-family: 'Poppins', sans-serif; background:#f8f9fa; padding:40px; text-align:center;">
+                    <div style="max-width:600px; margin:0 auto; background:#fff; border-radius:16px; box-shadow:0 4px 16px rgba(0,0,0,0.1); border-top:6px solid #D6E03F; padding:40px;">
+                        
+                        <h2 style="color:#1E2A38; font-weight:700;">New {logbook_type.upper()} Uploaded</h2>
+                        <p style="font-size:1.05rem; color:#555; margin-bottom:30px;">
+                            Hello {mentor.fullname},<br><br>
+                            Student <strong>{current_user.fullname}</strong> has uploaded their <strong>{logbook_type.upper()}</strong>.<br>
+                            Please log into the Moepi Attendance System to review it.
+                        </p>
+                        <a href="https://wbl3.onrender.com/login" 
+                           style="display:inline-block; padding:12px 36px; border-radius:30px; font-weight:600; font-size:1rem; text-decoration:none; background-color:#D6E03F; color:#1E2A38; margin-top:20px;">
+                           Log in to Review
+                        </a>
+                        <p style="margin-top:30px; font-size:0.9rem; color:#888;">
+                            Regards,<br>Moepi Attendance System
+                        </p>
+                    </div>
+                    <footer style="margin-top:20px; font-size:0.9rem; color:#888;">
+                        © {datetime.now().year} Moepi Publishing — All Rights Reserved
+                    </footer>
+                </div>
+                """
+            )
+            mail.send(msg)
+        except Exception as e:
+            print("❌ Email send error:", e)
 
 def verify_session_otp(entered_otp):
     stored_otp = session.get('email_otp')
@@ -279,10 +318,10 @@ def register():
 
         # ------------------- Graduate Registration -------------------
         elif user_category == 'Graduate':
-            department = request.form.get('department', '').strip()
+            department = request.form.get('graduate_department', '').strip()
             qualification = request.form.get('qualification', '').strip()
 
-            if not department or not qualification:
+            if  not qualification:
                 flash("Please fill in all graduate fields.", "danger")
                 return redirect(url_for('register'))
 
@@ -444,6 +483,8 @@ def login():
             return redirect(url_for('wil_coordinator_dashboard'))
         elif user.role == "MICSETA Mentor":
             return redirect(url_for('mictseta_dashboard'))
+        elif user.role == "Graduate":
+            return redirect(url_for('graduate_dashboard'))
         else:
             return redirect(url_for('dashboard'))
 
@@ -574,7 +615,7 @@ def reset_password(token):
     return render_template('reset_password.html', token=token)
 
 
-# -------------------- Employee Dashboard --------------------
+# -------------------- Student Dashboard --------------------
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -822,7 +863,7 @@ def mentor_dashboard():
         least_active_student_name=least_active_student.fullname if least_active_student else "-",
         checkins_paginated=checkins_paginated,
         assignments_paginated=assignments_paginated,
-        timesheets_paginated=timesheets_paginated,  # <-- added
+        timesheets_paginated=timesheets_paginated, 
         month_counts=month_counts,
         student_counts=student_counts,
         attendance_labels=attendance_labels,
@@ -1460,7 +1501,44 @@ def wil_coordinator_dashboard():
         assignment_counts=assignment_counts
     )
 
+@app.route('/graduate_dashboard')
+@login_required
+def graduate_dashboard():
+    if current_user.role != "Graduate":
+        flash("Access denied: Graduates only.", "danger")
+        return redirect(url_for('dashboard'))  
 
+    now = datetime.now()
+
+    
+    slot_states = {}
+    for slot in CHECKIN_SLOTS:
+        already = CheckIn.query.filter_by(
+            user_id=current_user.id, slot=slot, date=now.date()
+        ).first()
+        slot_states[slot] = {
+            'already': bool(already),
+            'comment': already.comment if already else None
+        }
+
+    
+    recent = CheckIn.query.filter_by(user_id=current_user.id).order_by(
+        CheckIn.timestamp.desc()
+    ).limit(20).all()
+
+    
+    last_timesheet = Timesheet.query.filter_by(user_id=current_user.id).order_by(
+        Timesheet.upload_date.desc()
+    ).first()
+
+    return render_template(
+        'graduates_dashboard.html', 
+        slot_states=slot_states,
+        now=now,
+        recent=recent,
+        last_timesheet=last_timesheet,
+        current_user=current_user
+    )
 
 
 
