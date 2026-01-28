@@ -171,6 +171,29 @@ If you did not attempt to log in, please ignore this email.
     mail.send(msg)
 
 
+def send_upload_confirmation(recipient_email, recipient_name, document_type):
+    """
+    Send a confirmation email to the student / graduate
+    after they upload a document (logbook and timesheet).
+    """
+    try:
+        msg = Message(
+            subject=f"{document_type} uploaded successfully",
+            recipients=[recipient_email],
+            body=(
+                f"Hi {recipient_name},\n\n"
+                f"Your {document_type} has been uploaded successfully to the Check-In System.\n"
+                "You can log in to the system at any time to view or download your submission.\n\n"
+                "Regards,\n"
+                "Check-In System"
+            )
+        )
+        mail.send(msg)
+    except Exception as e:
+        # Do not block the request if email fails; just log to console.
+        print("❌ Upload confirmation email error:", e)
+
+
 def store_otp_in_session(user_id, otp):
     session['email_otp'] = otp
     session['otp_user_id'] = user_id
@@ -752,6 +775,13 @@ def student_upload_timesheet():
         db.session.add(timesheet)
         db.session.commit()
 
+        # Email confirmation to the student
+        send_upload_confirmation(
+            recipient_email=current_user.email,
+            recipient_name=current_user.fullname,
+            document_type="Student Timesheet"
+        )
+
         flash('✅ Student timesheet uploaded successfully!', 'success')
         return redirect(url_for('student_upload_timesheet'))
 
@@ -807,6 +837,13 @@ def graduate_upload_timesheet():
 
         db.session.add(timesheet)
         db.session.commit()
+
+        # Email confirmation to the graduate
+        send_upload_confirmation(
+            recipient_email=current_user.email,
+            recipient_name=current_user.fullname,
+            document_type="Graduate Timesheet"
+        )
 
         flash('✅ Graduate timesheet uploaded successfully!', 'success')
         return redirect(url_for('graduate_upload_timesheet'))
@@ -1231,6 +1268,13 @@ def upload_assignment_page():
                 print("❌ Failed to send email to mentor:", e)
         # -----------------------------------------------------
 
+        # --- Send confirmation email to the student / graduate ---
+        send_upload_confirmation(
+            recipient_email=current_user.email,
+            recipient_name=current_user.fullname,
+            document_type=logbook_type.upper()
+        )
+
         if flash_msg:
             flash(flash_msg, 'success')
 
@@ -1281,6 +1325,13 @@ def upload_wb1():
     # 📧 SEND EMAIL TO MENTORS
     notify_mentors("WB1")
 
+    # 📧 Confirmation email to the student / graduate
+    send_upload_confirmation(
+        recipient_email=current_user.email,
+        recipient_name=current_user.fullname,
+        document_type="WB1 Logbook"
+    )
+
     flash("WB1 uploaded successfully ✅", "success")
     return redirect(url_for('upload_assignment_page'))
 
@@ -1315,6 +1366,13 @@ def upload_wb2():
     # 📧 SEND EMAIL TO MENTORS
     notify_mentors("WBL2")
 
+    # 📧 Confirmation email to the student / graduate
+    send_upload_confirmation(
+        recipient_email=current_user.email,
+        recipient_name=current_user.fullname,
+        document_type="WBL2 Logbook"
+    )
+
     flash("WB2 uploaded successfully ✅", "success")
     return redirect(url_for('upload_assignment_page'))
 
@@ -1348,6 +1406,13 @@ def upload_wb3():
 
     # 📧 SEND EMAIL TO MENTORS
     notify_mentors("WBL3")
+
+    # 📧 Confirmation email to the student / graduate
+    send_upload_confirmation(
+        recipient_email=current_user.email,
+        recipient_name=current_user.fullname,
+        document_type="WBL3 Logbook"
+    )
 
     flash("WB3 uploaded successfully ✅", "success")
     return redirect(url_for('upload_assignment_page'))
