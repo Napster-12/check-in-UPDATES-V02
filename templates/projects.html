@@ -66,7 +66,7 @@
         <button class="btn btn-dots" type="button" data-bs-toggle="dropdown" aria-expanded="false">&#x22EE;</button>
         <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
           <li><a class="dropdown-item fw-semibold" href="{{ url_for('dashboard') }}">Check-IN</a></li>
-          <li><a class="dropdown-item fw-semibold" href="{{ url_for('upload_timesheet_page') }}">Upload Timesheet</a></li>
+          <li><a class="dropdown-item fw-semibold" href="{{ url_for('student_upload_timesheet') }}">Upload Timesheet</a></li>
           <li><a class="dropdown-item fw-semibold" href="{{ url_for('upload_assignment_page') }}">Upload Logbooks</a></li>
           <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item text-danger fw-semibold" href="{{ url_for('logout') }}">Logout</a></li>
@@ -89,7 +89,7 @@
 
     <!-- WB1 -->
     <div class="upload-section">
-      <h5 class="mb-3 fw-semibold">Upload WB1</h5>
+      <h5 class="mb-3 fw-semibold">Upload LOGBOOK 1</h5>
       <form method="POST" action="{{ url_for('upload_wb1') }}" enctype="multipart/form-data" class="d-flex flex-column align-items-center">
         <div class="d-flex align-items-center gap-2">
           <input type="file" name="wb1_file" class="form-control mb-3" style="max-width: 300px;" required>
@@ -97,13 +97,13 @@
             <span class="tick">&#10003;</span>
           {% endif %}
         </div>
-        <button type="submit" class="btn btn-brand px-4">Upload WB1</button>
+        <button type="submit" class="btn btn-brand px-4">Upload LOGBOOK 1</button>
       </form>
     </div>
 
     <!-- WB2 -->
     <div class="upload-section">
-      <h5 class="mb-3 fw-semibold">Upload WB2</h5>
+      <h5 class="mb-3 fw-semibold">Upload LOGBOOK 2</h5>
       <form method="POST" action="{{ url_for('upload_wb2') }}" enctype="multipart/form-data" class="d-flex flex-column align-items-center">
         <div class="d-flex align-items-center gap-2">
           <input type="file" name="wb2_file" class="form-control mb-3" style="max-width: 300px;" required>
@@ -111,13 +111,13 @@
             <span class="tick">&#10003;</span>
           {% endif %}
         </div>
-        <button type="submit" class="btn btn-brand px-4">Upload WB2</button>
+        <button type="submit" class="btn btn-brand px-4">Upload LOGBOOK 2</button>
       </form>
     </div>
 
     <!-- WB3 -->
     <div class="upload-section">
-      <h5 class="mb-3 fw-semibold">Upload WB3</h5>
+      <h5 class="mb-3 fw-semibold">Upload LOGBOOK 3</h5>
       <form method="POST" action="{{ url_for('upload_wb3') }}" enctype="multipart/form-data" class="d-flex flex-column align-items-center">
         <div class="d-flex align-items-center gap-2">
           <input type="file" name="wb3_file" class="form-control mb-3" style="max-width: 300px;" required>
@@ -125,7 +125,7 @@
             <span class="tick">&#10003;</span>
           {% endif %}
         </div>
-        <button type="submit" class="btn btn-brand px-4">Upload WB3</button>
+        <button type="submit" class="btn btn-brand px-4">Upload LOGBOOK 3</button>
       </form>
     </div>
 

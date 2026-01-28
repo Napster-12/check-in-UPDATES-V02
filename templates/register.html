@@ -144,14 +144,12 @@
             <option value="TVET College">TVET College</option>
           </select>
         </div>
-
         <div class="mb-3 text-start">
           <label class="form-label">Institution Name</label>
           <select id="institutionName" name="institution_name" class="form-select" required>
             <option value="">-- Select Institution --</option>
           </select>
         </div>
-
         <div class="mb-3 text-start">
           <label class="form-label">Department</label>
           <select name="department" class="form-select" required>
@@ -165,7 +163,6 @@
             <option>BUSINESS DEVELOPMENT</option>
           </select>
         </div>
-
         <div class="mb-3 text-start">
           <label class="form-label">Select Mentor</label>
           <select name="mentor_id" class="form-select" required>
@@ -177,7 +174,7 @@
         </div>
       </div>
 
-      <!-- Graduate Fields  -->
+      <!-- Graduate Fields -->
       <div id="graduateForm" class="d-none">
         <div class="mb-3 text-start">
           <label class="form-label">Department</label>
@@ -192,7 +189,6 @@
             <option>BUSINESS DEVELOPMENT</option>
           </select>
         </div>
-
         <div class="mb-3 text-start">
           <label class="form-label">Qualification</label>
           <input name="qualification" class="form-control" placeholder="e.g. Diploma / Degree" required>
@@ -219,7 +215,6 @@
             <option value="MICSETA Mentor">MICSETA Mentor</option>
           </select>
         </div>
-
         <div class="mb-3 text-start">
           <label class="form-label">Organization</label>
           <select id="organization" name="organization" class="form-select" required>
@@ -240,12 +235,11 @@
 <footer>
   © {{ current_year or "2025" }} Moepi Publishing — All Rights Reserved
 </footer>
-
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
   /* ===============================
-     USER CATEGORY TOGGLE
+     USER CATEGORY TOGGLE WITH REQUIRED FIX
   =============================== */
   const studentBtn = document.getElementById('studentBtn');
   const graduateBtn = document.getElementById('graduateBtn');
@@ -257,21 +251,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const userCategory = document.getElementById('userCategory');
 
+  // Function to toggle required attributes on a form
+  function toggleRequired(form, enable) {
+    form.querySelectorAll('input, select').forEach(el => {
+      if (enable) {
+        el.setAttribute('required', 'required');
+      } else {
+        el.removeAttribute('required');
+      }
+    });
+  }
+
+  // Hide all forms and remove required
+  function hideAllForms() {
+    [studentForm, graduateForm, adminForm].forEach(form => {
+      form.classList.add('d-none');
+      toggleRequired(form, false);
+    });
+  }
+
+  // Event listeners for toggles
   studentBtn.addEventListener('click', () => {
-    studentForm.classList.remove('d-none'); studentForm.classList.add('fadeIn');
-    graduateForm.classList.add('d-none'); adminForm.classList.add('d-none');
+    hideAllForms();
+    studentForm.classList.remove('d-none');
+    studentForm.classList.add('fadeIn');
+    toggleRequired(studentForm, true);
     userCategory.value = 'Student';
   });
 
   graduateBtn.addEventListener('click', () => {
-    graduateForm.classList.remove('d-none'); graduateForm.classList.add('fadeIn');
-    studentForm.classList.add('d-none'); adminForm.classList.add('d-none');
+    hideAllForms();
+    graduateForm.classList.remove('d-none');
+    graduateForm.classList.add('fadeIn');
+    toggleRequired(graduateForm, true);
     userCategory.value = 'Graduate';
   });
 
   adminBtn.addEventListener('click', () => {
-    adminForm.classList.remove('d-none'); adminForm.classList.add('fadeIn');
-    studentForm.classList.add('d-none'); graduateForm.classList.add('d-none');
+    hideAllForms();
+    adminForm.classList.remove('d-none');
+    adminForm.classList.add('fadeIn');
+    toggleRequired(adminForm, true);
     userCategory.value = 'Admin';
   });
 
@@ -323,38 +343,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  /* ===============================
-     ADMIN ORGANIZATION FILTERING
-  =============================== */
-  const userType = document.getElementById('userType');
-  const organization = document.getElementById('organization');
+/* ===============================
+   ADMIN ORGANIZATION FILTERING
+=============================== */
+const userType = document.getElementById('userType');
+const organization = document.getElementById('organization');
 
-  const orgs = {
-    "Mentor": ["Moepi Publishing", "MICSETA"],
-    "MICSETA Mentor": ["Moepi Publishing", "MICSETA"],
-    "WIL Co-ordinator": Object.values(institutions).flat()
-  };
+const orgs = {
+  "Mentor": ["MICSETA", "Moepi Publishing"],  // Only these two for Mentor
+  "MICSETA Mentor": ["MICSETA", "Moepi Publishing"],
+  "WIL Co-ordinator": Object.values(institutions).flat() // Keep as before
+};
 
-  if (userType && organization) {
-    userType.addEventListener('change', () => {
-      const type = userType.value;
-      organization.innerHTML = '<option value="">-- Select Organization --</option>';
-      if (orgs[type]) {
-        orgs[type].forEach(org => {
-          const option = document.createElement('option');
-          option.value = org;
-          option.textContent = org;
-          organization.appendChild(option);
-        });
-      }
-    });
-  }
+if (userType && organization) {
+  userType.addEventListener('change', () => {
+    const type = userType.value;
+    // Reset organization options
+    organization.innerHTML = '<option value="">-- Select Organization --</option>';
+    
+    if (orgs[type]) {
+      orgs[type].forEach(org => {
+        const option = document.createElement('option');
+        option.value = org;
+        option.textContent = org;
+        organization.appendChild(option);
+      });
+    }
+  });
+}
+
 
 });
 </script>
-
-
-
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>

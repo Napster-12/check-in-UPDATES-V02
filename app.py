@@ -1,8 +1,10 @@
 from flask import (
     Flask, render_template, request, redirect,
     url_for, flash, jsonify, send_from_directory,
-    session, abort, send_file, make_response
+    session, abort, send_file, make_response, current_app, send_file
+
 )
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user,
@@ -18,10 +20,10 @@ import pytz
 import os
 import random
 import csv
+import io
+import zipfile
 
-# =========================================================
-# APP CONFIG
-# =========================================================
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -72,7 +74,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
 
     role = db.Column(db.String(50), nullable=False)
-    organization = db.Column(db.String(100), nullable=False, default="N/A")  # Default for Graduates
+    organization = db.Column(db.String(100), nullable=False, default="N/A")  
     is_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -238,7 +240,7 @@ def verify_session_otp(entered_otp):
 # =========================================================
 
 CHECKIN_SLOTS = ["11:00", "13:00", "16:00"]
-ALLOWED_EXTENSIONS = {'pdf', 'xlsx', 'csv', 'docx', 'png', 'jpg'}
+ALLOWED_EXTENSIONS = {'pdf','csv'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -251,7 +253,7 @@ def home():
 
 
 
-# -------------------- Registration --------------------
+
 # -------------------- Registration --------------------
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -290,7 +292,7 @@ def register():
             return redirect(url_for('register'))
 
         # ------------------- Identify User Category -------------------
-        user_category = request.form.get('user_category', '').strip()  # Student / Graduate / Admin
+        user_category = request.form.get('user_category', '').strip() 
 
         # ------------------- Student Registration -------------------
         if user_category == 'Student':
@@ -336,7 +338,7 @@ def register():
 
         # ------------------- Admin Registration -------------------
         elif user_category == 'Admin':
-            user_type_form = request.form.get('user_type', '').strip()  # Admin type
+            user_type_form = request.form.get('user_type', '').strip()  
             organization = request.form.get('organization', '').strip()
 
             if not user_type_form or not organization:
@@ -348,7 +350,7 @@ def register():
                 email=email,
                 role=user_type_form,
                 organization=organization,
-                is_admin=user_type_form in ['Mentor', 'WIL Co-ordinator', 'Administrator']
+                is_admin=user_type_form in ['Mentor', 'WIL Co-ordinator', 'MICSETA Mentor']
             )
 
         else:
@@ -391,7 +393,7 @@ def login():
         if current_user.role == "Administrator":
             return redirect(url_for('admin_dashboard'))
         elif current_user.role == "Mentor":
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('mentor_dashboard'))
         elif current_user.role == "WIL Co-ordinator":
             return redirect(url_for('wil_coordinator_dashboard'))
         elif current_user.role == "MICSETA Mentor":
@@ -622,6 +624,10 @@ def dashboard():
     if current_user.is_admin:
         return redirect(url_for('admin_dashboard'))
 
+    role_clean = (current_user.role or '').strip().lower()
+    if role_clean == 'graduate':
+        return redirect(url_for('graduate_dashboard'))
+
     now = datetime.now()
     slot_states = {}
     for slot in CHECKIN_SLOTS:
@@ -641,9 +647,12 @@ def checkin(slot):
     sa_tz = pytz.timezone("Africa/Johannesburg")
     now = datetime.now(sa_tz)  # Always use S.A. time
 
+    role_clean = (current_user.role or '').strip().lower()
+    redirect_dashboard = 'graduate_dashboard' if role_clean == "graduate" else 'dashboard'
+
     if slot not in CHECKIN_SLOTS:
         flash('Invalid check-in slot.', 'danger')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for(redirect_dashboard))
 
     comment = request.form.get('comment', '').strip()
 
@@ -658,7 +667,7 @@ def checkin(slot):
     # Validate check-in time
     if not (start_time <= now <= end_time):
         flash(f"⏰ Check-in for {slot} is only allowed until {end_time.strftime('%H:%M')}.", "danger")
-        return redirect(url_for('dashboard'))
+        return redirect(url_for(redirect_dashboard))
 
     # Prevent duplicate check-ins
     existing = CheckIn.query.filter_by(
@@ -669,7 +678,7 @@ def checkin(slot):
 
     if existing:
         flash(f"You already checked in for {slot} today.", 'warning')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for(redirect_dashboard))
 
     # Save record using SA time
     ci = CheckIn(
@@ -683,77 +692,125 @@ def checkin(slot):
     db.session.commit()
 
     flash(f"✅ Check-in for {slot} recorded successfully.", 'success')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for(redirect_dashboard))
 
 
-@app.route('/upload_timesheet', methods=['GET', 'POST'])
+@app.route('/student/upload_timesheet', methods=['GET', 'POST'])
 @login_required
-def upload_timesheet_page():
+def student_upload_timesheet():
+
+    if current_user.role != "Student":
+        flash("❌ Access denied.", "danger")
+        return redirect(url_for('dashboard'))
+
     now = datetime.now()
     current_day = now.day
     current_month = now.month
     current_year = now.year
 
     if request.method == 'POST':
+
         if current_day != 28:
             flash("❌ Timesheets can only be uploaded on the 28th of each month.", "danger")
-            return redirect(url_for('upload_timesheet_page'))
+            return redirect(url_for('student_upload_timesheet'))
 
         file = request.files.get('timesheet')
         if not file:
-            flash('⚠️ No file selected. Please choose a file.', 'warning')
-            return redirect(url_for('upload_timesheet_page'))
+            flash('⚠️ No file selected.', 'warning')
+            return redirect(url_for('student_upload_timesheet'))
 
-        existing_timesheet = Timesheet.query.filter_by(user_id=current_user.id).filter(
+        existing_timesheet = Timesheet.query.filter_by(
+            user_id=current_user.id
+        ).filter(
             db.extract('month', Timesheet.upload_date) == current_month,
             db.extract('year', Timesheet.upload_date) == current_year
         ).first()
 
         if existing_timesheet:
-            flash('❌ You have already uploaded a timesheet for this month.', 'danger')
-            return redirect(url_for('upload_timesheet_page'))
+            flash('❌ You already uploaded a timesheet this month.', 'danger')
+            return redirect(url_for('student_upload_timesheet'))
 
-        # Save file
         filename = secure_filename(file.filename)
-        upload_folder = os.path.join(app.root_path, 'uploads', 'timesheets')
+        upload_folder = os.path.join(app.root_path, 'uploads', 'student_timesheets')
         os.makedirs(upload_folder, exist_ok=True)
         file_path = os.path.join(upload_folder, filename)
         file.save(file_path)
 
-        # Save record in database
-        new_timesheet = Timesheet(
+        timesheet = Timesheet(
             user_id=current_user.id,
             filename=filename,
             filepath=file_path,
             upload_date=now
         )
-        db.session.add(new_timesheet)
+
+        db.session.add(timesheet)
         db.session.commit()
 
-        # --- Send email to mentors ---
-        mentors = User.query.filter(User.role.in_(["Mentor", "WIL Co-ordinator"])).all()
-        for mentor in mentors:
-            msg = Message(
-                subject="New Timesheet Submitted",
-                recipients=[mentor.email],
-                body=f"Hello {mentor.fullname},\n\n"
-                     f"Student {current_user.fullname} has uploaded their timesheet for {now.strftime('%B %Y')}.\n\n"
-                     f"Login to the system to review or download the timesheet.\n\n"
-                     f"Best regards,\nMoepi Attendance System"
-            )
-            mail.send(msg)
-        # --------------------------------
+        flash('✅ Student timesheet uploaded successfully!', 'success')
+        return redirect(url_for('student_upload_timesheet'))
 
-        flash('✅ Timesheet uploaded successfully for this month!', 'success')
-        return redirect(url_for('upload_timesheet_page'))
+    last_timesheet = Timesheet.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Timesheet.upload_date.desc()).first()
 
-    last_timesheet = (
-        Timesheet.query.filter_by(user_id=current_user.id)
-        .order_by(Timesheet.upload_date.desc())
-        .first()
-    )
+    return render_template('student_timesheet.html', last_timesheet=last_timesheet)
 
-    return render_template('timsheet.html', last_timesheet=last_timesheet)
+
+@app.route('/graduate/upload_timesheet', methods=['GET', 'POST'])
+@login_required
+def graduate_upload_timesheet():
+
+    if current_user.role != "Graduate":
+        flash("❌ Access denied.", "danger")
+        return redirect(url_for('dashboard'))
+
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+
+    if request.method == 'POST':
+
+        file = request.files.get('timesheet')
+        if not file:
+            flash('⚠️ No file selected.', 'warning')
+            return redirect(url_for('graduate_upload_timesheet'))
+
+        existing_timesheet = Timesheet.query.filter_by(
+            user_id=current_user.id
+        ).filter(
+            db.extract('month', Timesheet.upload_date) == current_month,
+            db.extract('year', Timesheet.upload_date) == current_year
+        ).first()
+
+        if existing_timesheet:
+            flash('❌ You already uploaded a timesheet this month.', 'danger')
+            return redirect(url_for('graduate_upload_timesheet'))
+
+        filename = secure_filename(file.filename)
+        upload_folder = os.path.join(app.root_path, 'uploads', 'graduate_timesheets')
+        os.makedirs(upload_folder, exist_ok=True)
+        file_path = os.path.join(upload_folder, filename)
+        file.save(file_path)
+
+        timesheet = Timesheet(
+            user_id=current_user.id,
+            filename=filename,
+            filepath=file_path,
+            upload_date=now
+        )
+
+        db.session.add(timesheet)
+        db.session.commit()
+
+        flash('✅ Graduate timesheet uploaded successfully!', 'success')
+        return redirect(url_for('graduate_upload_timesheet'))
+
+    last_timesheet = Timesheet.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Timesheet.upload_date.desc()).first()
+
+    return render_template('graduate_timesheet.html', last_timesheet=last_timesheet)
+
 
 
 
@@ -933,42 +990,60 @@ def export_checkins():
 @app.route('/mentor_download/<int:assignment_id>')
 @login_required
 def mentor_download(assignment_id):
+    # Fetch the specific assignment record
     assignment = Assignment.query.get_or_404(assignment_id)
 
-    # Construct file path from UPLOAD_FOLDER + filename
-    file_path = os.path.join(UPLOAD_FOLDER, assignment.filename)
+    # Access control
+    allowed_roles = ['Mentor', 'Admin']
+    if current_user.id != assignment.user_id and getattr(current_user, 'role', None) not in allowed_roles:
+        abort(403)
 
-    if os.path.exists(file_path):
-        return send_from_directory(UPLOAD_FOLDER, assignment.filename, as_attachment=True)
-    else:
+    # Build safe file path
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    filename = os.path.basename(assignment.filename)
+    file_path = os.path.join(upload_root, filename)
+
+    # Ensure file exists
+    if not os.path.isfile(file_path):
         abort(404, description="File not found")
+
+    # Send exact requested file
+    return send_from_directory(
+        upload_root,
+        filename,
+        as_attachment=True
+    )
+
         
 @app.route('/mentor/download_timesheet/<int:timesheet_id>')
 @login_required
 def mentor_download_timesheet(timesheet_id):
-    # Fetch the timesheet record
+    # Fetch specific timesheet record
     ts = Timesheet.query.get_or_404(timesheet_id)
 
-    # Allow download if:
-    # - The user is the owner of the timesheet
-    # - The user is a mentor
-    # - The user is an admin
+    # Role-based access control
     allowed_roles = ['Mentor', 'Admin']
     if current_user.id != ts.user_id and getattr(current_user, 'role', None) not in allowed_roles:
         flash("Access denied or file not found.", "danger")
         return redirect(url_for('mentor_dashboard'))
 
-    # Extract folder path from filepath
-    folder = os.path.join(app.root_path, 'uploads', 'timesheets')
+    # Build full file path safely
+    upload_root = os.path.join(current_app.root_path, 'uploads', 'timesheets')
     filename = os.path.basename(ts.filepath)
+    full_path = os.path.join(upload_root, filename)
 
     # Ensure the file exists
-    if not os.path.exists(os.path.join(folder, filename)):
+    if not os.path.isfile(full_path):
         flash("File not found on server.", "danger")
         return redirect(url_for('mentor_dashboard'))
 
-    # Send the file to the browser
-    return send_from_directory(folder, filename, as_attachment=True)
+    # Send the exact requested file
+    return send_from_directory(
+        upload_root,
+        filename,
+        as_attachment=True
+    )
+
 
 
 
@@ -1232,7 +1307,7 @@ def upload_wb2():
     db.session.commit()
 
     # 📧 SEND EMAIL TO MENTORS
-    notify_mentors("WB2")
+    notify_mentors("WBL2")
 
     flash("WB2 uploaded successfully ✅", "success")
     return redirect(url_for('upload_assignment_page'))
@@ -1266,7 +1341,7 @@ def upload_wb3():
     db.session.commit()
 
     # 📧 SEND EMAIL TO MENTORS
-    notify_mentors("WB3")
+    notify_mentors("WBL3")
 
     flash("WB3 uploaded successfully ✅", "success")
     return redirect(url_for('upload_assignment_page'))
@@ -1299,7 +1374,7 @@ def mentor_assignments():
 app.route('/mentor/download/<int:assignment_id>')
 def mentor_download(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
-    logbook_dir = os.path.join(app.root_path, 'uploads/logbooks')  # adjust path
+    logbook_dir = os.path.join(app.root_path, 'uploads/logbooks')  
     file_path = os.path.join(logbook_dir, assignment.filename)
     if os.path.exists(file_path):
         return send_from_directory(logbook_dir, assignment.filename, as_attachment=True)
@@ -1540,6 +1615,38 @@ def graduate_dashboard():
         current_user=current_user
     )
 
+
+@app.route('/mentor/download_all_logbooks')
+@login_required
+def mentor_download_all_logbooks():
+    allowed_roles = ['Mentor', 'Admin']
+    if getattr(current_user, 'role', None) not in allowed_roles:
+        abort(403)
+
+    assignments = Assignment.query.all()
+
+    if not assignments:
+        flash("No logbooks available for download.", "warning")
+        return redirect(url_for('mentor_dashboard'))
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for a in assignments:
+            filename = os.path.basename(a.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+            if os.path.isfile(file_path):
+                zip_file.write(file_path, arcname=filename)
+
+    zip_buffer.seek(0)
+
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='all_logbooks.zip'
+    )
 
 
 # -------------------- Run --------------------
