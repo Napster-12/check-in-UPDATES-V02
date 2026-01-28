@@ -1,14 +1,15 @@
 from flask import (
     Flask, render_template, request, redirect,
     url_for, flash, jsonify, send_from_directory,
-    session, abort, send_file, make_response
+    session, abort, send_file, make_response, current_app, send_file
+
 )
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user,
     login_required, current_user, UserMixin
 )
-
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -19,10 +20,10 @@ import pytz
 import os
 import random
 import csv
+import io
+import zipfile
 
-# =========================================================
-# APP CONFIG
-# =========================================================
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -241,6 +242,10 @@ def verify_session_otp(entered_otp):
 CHECKIN_SLOTS = ["11:00", "13:00", "16:00"]
 ALLOWED_EXTENSIONS = {'pdf','csv'}
 
+
+# Dev/testing: allow check-in outside the 10-minute window
+ALLOW_ANYTIME_CHECKIN = False
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -389,8 +394,9 @@ def login():
     # Already logged in → redirect by role
     # -------------------------------------------------
     if current_user.is_authenticated:
-        
-        if current_user.role == "Mentor":
+        if current_user.role == "Administrator":
+            return redirect(url_for('admin_dashboard'))
+        elif current_user.role == "Mentor":
             return redirect(url_for('mentor_dashboard'))
         elif current_user.role == "WIL Co-ordinator":
             return redirect(url_for('wil_coordinator_dashboard'))
@@ -475,8 +481,9 @@ def login():
         flash('Logged in successfully ✅', 'success')
 
         # Role-based redirect
-        
-        if user.role == "Mentor":
+        if user.role == "Administrator":
+            return redirect(url_for('mentor_dashboard'))
+        elif user.role == "Mentor":
             return redirect(url_for('mentor_dashboard'))
         elif user.role == "WIL Co-ordinator":
             return redirect(url_for('wil_coordinator_dashboard'))
@@ -621,6 +628,10 @@ def dashboard():
     if current_user.is_admin:
         return redirect(url_for('admin_dashboard'))
 
+    role_clean = (current_user.role or '').strip().lower()
+    if role_clean == 'graduate':
+        return redirect(url_for('graduate_dashboard'))
+
     now = datetime.now()
     slot_states = {}
     for slot in CHECKIN_SLOTS:
@@ -640,9 +651,13 @@ def checkin(slot):
     sa_tz = pytz.timezone("Africa/Johannesburg")
     now = datetime.now(sa_tz)  # Always use S.A. time
 
+    # Determine redirect destination based on user role (case/whitespace tolerant)
+    role_clean = (current_user.role or '').strip().lower()
+    redirect_dashboard = 'graduate_dashboard' if role_clean == "graduate" else 'dashboard'
+
     if slot not in CHECKIN_SLOTS:
         flash('Invalid check-in slot.', 'danger')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for(redirect_dashboard))
 
     comment = request.form.get('comment', '').strip()
 
@@ -655,9 +670,10 @@ def checkin(slot):
     end_time = slot_datetime + timedelta(minutes=10)
 
     # Validate check-in time
-    if not (start_time <= now <= end_time):
-        flash(f"⏰ Check-in for {slot} is only allowed until {end_time.strftime('%H:%M')}.", "danger")
-        return redirect(url_for('dashboard'))
+    if not ALLOW_ANYTIME_CHECKIN:
+        if not (start_time <= now <= end_time):
+            flash(f"⏰ Check-in for {slot} is only allowed until {end_time.strftime('%H:%M')}.", "danger")
+            return redirect(url_for(redirect_dashboard))
 
     # Prevent duplicate check-ins
     existing = CheckIn.query.filter_by(
@@ -668,7 +684,7 @@ def checkin(slot):
 
     if existing:
         flash(f"You already checked in for {slot} today.", 'warning')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for(redirect_dashboard))
 
     # Save record using SA time
     ci = CheckIn(
@@ -682,7 +698,7 @@ def checkin(slot):
     db.session.commit()
 
     flash(f"✅ Check-in for {slot} recorded successfully.", 'success')
-    return redirect(url_for('dashboard'))
+    return redirect(url_for(redirect_dashboard))
 
 
 @app.route('/student/upload_timesheet', methods=['GET', 'POST'])
@@ -825,13 +841,13 @@ PER_PAGE = 10  # pagination size
 @app.route('/mentor', methods=['GET'])
 @login_required
 def mentor_dashboard():
-    if current_user.role not in ["Mentor", "WIL Co-ordinator", "MICSETA Mentor"]:
+
+    if current_user.role not in ["Mentor", "WIL Co-ordinator"]:
         flash("Access denied.", "danger")
         return redirect(url_for('dashboard'))
 
     # Filters
     name_filter = request.args.get('name', '')
-    role_filter = request.args.get('role_filter', '')  # New role filter
     month_filter = request.args.get('month', '')
     year_filter = request.args.get('year', '')
     day_filter = request.args.get('day', '')
@@ -841,22 +857,11 @@ def mentor_dashboard():
     logpage = request.args.get('logpage', 1, type=int)
     timesheet_page = request.args.get('timesheet_page', 1, type=int)
 
-    # Get both Students AND Graduates
-    employees_query = User.query.filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter if specified
-    if role_filter:
-        employees_query = employees_query.filter(User.role == role_filter)
-    
-    employees = employees_query.all()
+    # Students
+    students = User.query.filter_by(role="Student").all()
 
-    # Check-ins - include both Students and Graduates
-    checkins_query = CheckIn.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter to check-ins
-    if role_filter:
-        checkins_query = checkins_query.filter(User.role == role_filter)
-        
+    # Check-ins
+    checkins_query = CheckIn.query.join(User).filter(User.role=="Student")
     if name_filter:
         checkins_query = checkins_query.filter(CheckIn.user_id==int(name_filter))
     if month_filter:
@@ -868,24 +873,14 @@ def mentor_dashboard():
         checkins_query = checkins_query.filter(db.func.date(CheckIn.timestamp) == date_obj.date())
     checkins_paginated = checkins_query.order_by(CheckIn.timestamp.desc()).paginate(page=page, per_page=PER_PAGE)
 
-    # Assignments - include both Students and Graduates
-    assignments_query = Assignment.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter to assignments
-    if role_filter:
-        assignments_query = assignments_query.filter(User.role == role_filter)
-        
+    # Assignments
+    assignments_query = Assignment.query.join(User).filter(User.role=="Student")
     if name_filter:
         assignments_query = assignments_query.filter(Assignment.user_id==int(name_filter))
     assignments_paginated = assignments_query.order_by(Assignment.upload_date.desc()).paginate(page=logpage, per_page=PER_PAGE)
 
-    # Timesheets - include both Students and Graduates
-    timesheets_query = Timesheet.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter to timesheets
-    if role_filter:
-        timesheets_query = timesheets_query.filter(User.role == role_filter)
-        
+    # Timesheets
+    timesheets_query = Timesheet.query.join(User).filter(User.role=="Student")
     if name_filter:
         timesheets_query = timesheets_query.filter(Timesheet.user_id==int(name_filter))
     if month_filter:
@@ -894,49 +889,46 @@ def mentor_dashboard():
         timesheets_query = timesheets_query.filter(db.extract('year', Timesheet.upload_date)==int(year_filter))
     timesheets_paginated = timesheets_query.order_by(Timesheet.upload_date.desc()).paginate(page=timesheet_page, per_page=PER_PAGE)
 
-    # Stats - for filtered users (Students + Graduates)
-    filtered_users = employees
+    # Stats
+    filtered_students = students
     if name_filter:
-        filtered_users = [u for u in filtered_users if str(u.id) == name_filter]
-    if role_filter:
-        filtered_users = [u for u in filtered_users if u.role == role_filter]
+        filtered_students = [s for s in filtered_students if str(s.id) == name_filter]
 
-    total_checkins = sum(len(u.checkins) for u in filtered_users)
-    most_active_user = max(filtered_users, key=lambda u: len(u.checkins), default=None)
-    least_active_user = min(filtered_users, key=lambda u: len(u.checkins), default=None)
+    total_checkins = sum(len(s.checkins) for s in filtered_students)
+    most_active_student = max(filtered_students, key=lambda s: len(s.checkins), default=None)
+    least_active_student = min(filtered_students, key=lambda s: len(s.checkins), default=None)
     all_checkins = CheckIn.query.all()
     earliest_checkin = min(all_checkins, key=lambda c: c.timestamp, default=None)
 
     # Charts
     month_counts = [0]*12
-    user_counts = {}
+    student_counts = {}
     attendance_labels = []
     attendance_counts = []
 
-    for u in filtered_users:
-        user_counts[u.fullname] = len(u.checkins)
-        attendance_labels.append(u.fullname)
-        attendance_counts.append(len(u.checkins))
-        for c in u.checkins:
+    for s in filtered_students:
+        student_counts[s.fullname] = len(s.checkins)
+        attendance_labels.append(s.fullname)
+        attendance_counts.append(len(s.checkins))
+        for c in s.checkins:
             month_counts[c.timestamp.month-1] += 1
 
     return render_template(
         "mentor_dashboard.html",
-        employees=employees,  # Now includes both Students and Graduates
+        employees=students,
         name_filter=name_filter,
-        role_filter=role_filter,
         month_filter=month_filter,
         year_filter=year_filter,
         day_filter=day_filter,
         total_checkins=total_checkins,
         earliest_checkin=earliest_checkin,
-        most_active_user_name=most_active_user.fullname if most_active_user else "-",
-        least_active_user_name=least_active_user.fullname if least_active_user else "-",
+        most_active_student_name=most_active_student.fullname if most_active_student else "-",
+        least_active_student_name=least_active_student.fullname if least_active_student else "-",
         checkins_paginated=checkins_paginated,
         assignments_paginated=assignments_paginated,
         timesheets_paginated=timesheets_paginated, 
         month_counts=month_counts,
-        user_counts=user_counts,  # Changed from student_counts to user_counts
+        student_counts=student_counts,
         attendance_labels=attendance_labels,
         attendance_counts=attendance_counts,
         now=datetime.now()
@@ -954,18 +946,15 @@ def export_checkins():
 
     # Get filter parameters from query string
     name_filter = request.args.get('name', '')
-    role_filter = request.args.get('role_filter', '')
     month_filter = request.args.get('month', '')
     year_filter = request.args.get('year', '')
     day_filter = request.args.get('day', '')
 
-    # Query check-ins with filters - INCLUDE GRADUATES
-    checkins_query = CheckIn.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter
-    if role_filter:
-        checkins_query = checkins_query.filter(User.role == role_filter)
-        
+    # Query students
+    students = User.query.filter_by(role="Student").all()
+
+    # Query check-ins with filters
+    checkins_query = CheckIn.query.join(User).filter(User.role=="Student")
     if name_filter:
         checkins_query = checkins_query.filter(CheckIn.user_id==int(name_filter))
     if month_filter:
@@ -978,15 +967,14 @@ def export_checkins():
 
     checkins = checkins_query.order_by(CheckIn.timestamp.desc()).all()
 
-    # Create CSV with role column
+    # Create CSV
     si = []
-    header = ['User Name', 'Role', 'Date', 'Time', 'Comment']
+    header = ['Student Name', 'Date', 'Time', 'Comment']
     si.append(header)
 
     for c in checkins:
         row = [
             c.user.fullname,
-            c.user.role,  # Add role to CSV
             c.timestamp.strftime('%Y-%m-%d'),
             c.timestamp.strftime('%H:%M:%S'),
             c.comment or ''
@@ -1008,53 +996,63 @@ def export_checkins():
 @app.route('/mentor_download/<int:assignment_id>')
 @login_required
 def mentor_download(assignment_id):
+    # Fetch the specific assignment record
     assignment = Assignment.query.get_or_404(assignment_id)
 
-    # Construct file path from UPLOAD_FOLDER + filename
-    file_path = os.path.join(UPLOAD_FOLDER, assignment.filename)
+    # Access control
+    allowed_roles = ['Mentor', 'Admin']
+    if current_user.id != assignment.user_id and getattr(current_user, 'role', None) not in allowed_roles:
+        abort(403)
 
-    if os.path.exists(file_path):
-        return send_from_directory(UPLOAD_FOLDER, assignment.filename, as_attachment=True)
-    else:
+    # Build safe file path
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    filename = os.path.basename(assignment.filename)
+    file_path = os.path.join(upload_root, filename)
+
+    # Ensure file exists
+    if not os.path.isfile(file_path):
         abort(404, description="File not found")
+
+    # Send exact requested file
+    return send_from_directory(
+        upload_root,
+        filename,
+        as_attachment=True
+    )
+
         
 @app.route('/mentor/download_timesheet/<int:timesheet_id>')
 @login_required
 def mentor_download_timesheet(timesheet_id):
-    # Fetch the timesheet record
+    # Fetch specific timesheet record
     ts = Timesheet.query.get_or_404(timesheet_id)
 
-    # Allow download if:
-    # - The user is the owner of the timesheet
-    # - The user is a mentor
-    # - The user is an admin
-    allowed_roles = ['Mentor', 'WIL Co-ordinator', 'MICSETA Mentor', 'Admin']
+    # Role-based access control
+    allowed_roles = ['Mentor', 'Admin']
     if current_user.id != ts.user_id and getattr(current_user, 'role', None) not in allowed_roles:
         flash("Access denied or file not found.", "danger")
         return redirect(url_for('mentor_dashboard'))
 
-    # Extract folder path from filepath
-    # Get just the filename from the stored path
+    # Build full file path safely
+    upload_root = os.path.join(current_app.root_path, 'uploads', 'timesheets')
     filename = os.path.basename(ts.filepath)
-    
-    # Try multiple possible locations for the file
-    possible_folders = [
-        os.path.join(app.root_path, 'uploads', 'timesheets'),
-        os.path.join(app.root_path, 'uploads', 'student_timesheets'),
-        os.path.join(app.root_path, 'uploads', 'graduate_timesheets'),
-        os.path.join(app.root_path, 'static', 'uploads', 'timesheets'),
-        os.path.dirname(ts.filepath)  # Try the original stored path
-    ]
-    
-    # Try each possible folder
-    for folder in possible_folders:
-        file_path = os.path.join(folder, filename)
-        if os.path.exists(file_path):
-            return send_from_directory(folder, filename, as_attachment=True)
-    
-    # If file not found in any location
-    flash(f"File not found: {filename}", "danger")
-    return redirect(url_for('mentor_dashboard'))
+    full_path = os.path.join(upload_root, filename)
+
+    # Ensure the file exists
+    if not os.path.isfile(full_path):
+        flash("File not found on server.", "danger")
+        return redirect(url_for('mentor_dashboard'))
+
+    # Send the exact requested file
+    return send_from_directory(
+        upload_root,
+        filename,
+        as_attachment=True
+    )
+
+
+
+
 
 @app.route('/admin/data', methods=['GET'])
 @login_required
@@ -1362,23 +1360,27 @@ def mentor_assignments():
     if current_user.role != "Mentor":
         flash("Access denied.", "danger")
         return redirect(url_for('dashboard'))
+
     
-    # Get both Students AND Graduates assigned to this mentor
-    users = User.query.filter_by(mentor_id=current_user.id).filter(
-        User.role.in_(['Student', 'Graduate'])
-    ).all()
-    user_ids = [u.id for u in users]
+    students = User.query.filter_by(mentor_id=current_user.id, role='Student').all()
+    student_ids = [s.id for s in students]
+
     
-    assignments = Assignment.query.filter(Assignment.user_id.in_(user_ids)).order_by(
-        Assignment.upload_date.desc()
-    ).all()
-    
-    return render_template('mentor_assignments.html', assignments=assignments, students=users)
+    assignments = Assignment.query.filter(Assignment.user_id.in_(student_ids)).order_by(Assignment.upload_date.desc()).all()
+    return render_template('mentor_assignments.html', assignments=assignments, students=students)
+
+
+
+    return send_from_directory(
+        directory=os.path.join(BASE_DIR, os.path.dirname(assignment.filepath)),
+        path=os.path.basename(assignment.filepath),
+        as_attachment=True
+    )
 
 app.route('/mentor/download/<int:assignment_id>')
 def mentor_download(assignment_id):
     assignment = Assignment.query.get_or_404(assignment_id)
-    logbook_dir = os.path.join(app.root_path, 'uploads/logbooks')  # adjust path
+    logbook_dir = os.path.join(app.root_path, 'uploads/logbooks')  
     file_path = os.path.join(logbook_dir, assignment.filename)
     if os.path.exists(file_path):
         return send_from_directory(logbook_dir, assignment.filename, as_attachment=True)
@@ -1618,8 +1620,39 @@ def graduate_dashboard():
         last_timesheet=last_timesheet,
         current_user=current_user
     )
-    
 
+
+@app.route('/mentor/download_all_logbooks')
+@login_required
+def mentor_download_all_logbooks():
+    allowed_roles = ['Mentor', 'Admin']
+    if getattr(current_user, 'role', None) not in allowed_roles:
+        abort(403)
+
+    assignments = Assignment.query.all()
+
+    if not assignments:
+        flash("No logbooks available for download.", "warning")
+        return redirect(url_for('mentor_dashboard'))
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for a in assignments:
+            filename = os.path.basename(a.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+            if os.path.isfile(file_path):
+                zip_file.write(file_path, arcname=filename)
+
+    zip_buffer.seek(0)
+
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='all_logbooks.zip'
+    )
 
 
 # -------------------- Run --------------------
