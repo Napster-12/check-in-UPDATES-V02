@@ -820,8 +820,6 @@ def uploaded_timesheet(filename):
 
 
 
-PER_PAGE = 10  # pagination size
-
 @app.route('/mentor', methods=['GET'])
 @login_required
 def mentor_dashboard():
@@ -829,118 +827,453 @@ def mentor_dashboard():
         flash("Access denied.", "danger")
         return redirect(url_for('dashboard'))
 
-    # Filters
-    name_filter = request.args.get('name', '')
-    role_filter = request.args.get('role_filter', '')  # New role filter
-    month_filter = request.args.get('month', '')
-    year_filter = request.args.get('year', '')
-    day_filter = request.args.get('day', '')
-
-    # Page numbers
-    page = request.args.get('page', 1, type=int)
-    logpage = request.args.get('logpage', 1, type=int)
-    timesheet_page = request.args.get('timesheet_page', 1, type=int)
-
-    # Get both Students AND Graduates
-    employees_query = User.query.filter(User.role.in_(["Student", "Graduate"]))
+    PER_PAGE = 10
     
-    # Apply role filter if specified
-    if role_filter:
-        employees_query = employees_query.filter(User.role == role_filter)
+    # Get current tab
+    current_tab = request.args.get('tab', 'combined')
     
-    employees = employees_query.all()
-
-    # Check-ins - include both Students and Graduates
-    checkins_query = CheckIn.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
+    # Get all employees (students and graduates)
+    employees = User.query.filter(User.role.in_(["Student", "Graduate"])).all()
     
-    # Apply role filter to check-ins
-    if role_filter:
-        checkins_query = checkins_query.filter(User.role == role_filter)
+    # ========== COMBINED VIEW ==========
+    if current_tab == 'combined':
+        # Combined filters
+        name_filter = request.args.get('name', '')
+        role_filter = request.args.get('role_filter', '')
+        month_filter = request.args.get('month', '')
+        year_filter = request.args.get('year', '')
+        day_filter = request.args.get('day', '')
         
-    if name_filter:
-        checkins_query = checkins_query.filter(CheckIn.user_id==int(name_filter))
-    if month_filter:
-        checkins_query = checkins_query.filter(db.extract('month', CheckIn.timestamp)==int(month_filter))
-    if year_filter:
-        checkins_query = checkins_query.filter(db.extract('year', CheckIn.timestamp)==int(year_filter))
-    if day_filter:
-        date_obj = datetime.fromisoformat(day_filter)
-        checkins_query = checkins_query.filter(db.func.date(CheckIn.timestamp) == date_obj.date())
-    checkins_paginated = checkins_query.order_by(CheckIn.timestamp.desc()).paginate(page=page, per_page=PER_PAGE)
-
-    # Assignments - include both Students and Graduates
-    assignments_query = Assignment.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter to assignments
-    if role_filter:
-        assignments_query = assignments_query.filter(User.role == role_filter)
+        # Page numbers
+        page = request.args.get('page', 1, type=int)
+        logpage = request.args.get('logpage', 1, type=int)
+        timesheet_page = request.args.get('timesheet_page', 1, type=int)
         
-    if name_filter:
-        assignments_query = assignments_query.filter(Assignment.user_id==int(name_filter))
-    assignments_paginated = assignments_query.order_by(Assignment.upload_date.desc()).paginate(page=logpage, per_page=PER_PAGE)
-
-    # Timesheets - include both Students and Graduates
-    timesheets_query = Timesheet.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
-    
-    # Apply role filter to timesheets
-    if role_filter:
-        timesheets_query = timesheets_query.filter(User.role == role_filter)
+        # Combined check-ins query
+        checkins_query = CheckIn.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
         
-    if name_filter:
-        timesheets_query = timesheets_query.filter(Timesheet.user_id==int(name_filter))
-    if month_filter:
-        timesheets_query = timesheets_query.filter(db.extract('month', Timesheet.upload_date)==int(month_filter))
-    if year_filter:
-        timesheets_query = timesheets_query.filter(db.extract('year', Timesheet.upload_date)==int(year_filter))
-    timesheets_paginated = timesheets_query.order_by(Timesheet.upload_date.desc()).paginate(page=timesheet_page, per_page=PER_PAGE)
-
-    # Stats - for filtered users (Students + Graduates)
-    filtered_users = employees
-    if name_filter:
-        filtered_users = [u for u in filtered_users if str(u.id) == name_filter]
-    if role_filter:
-        filtered_users = [u for u in filtered_users if u.role == role_filter]
-
-    total_checkins = sum(len(u.checkins) for u in filtered_users)
-    most_active_user = max(filtered_users, key=lambda u: len(u.checkins), default=None)
-    least_active_user = min(filtered_users, key=lambda u: len(u.checkins), default=None)
-    all_checkins = CheckIn.query.all()
-    earliest_checkin = min(all_checkins, key=lambda c: c.timestamp, default=None)
-
-    # Charts
-    month_counts = [0]*12
-    user_counts = {}
-    attendance_labels = []
-    attendance_counts = []
-
-    for u in filtered_users:
-        user_counts[u.fullname] = len(u.checkins)
-        attendance_labels.append(u.fullname)
-        attendance_counts.append(len(u.checkins))
-        for c in u.checkins:
-            month_counts[c.timestamp.month-1] += 1
-
-    return render_template(
-        "mentor_dashboard.html",
-        employees=employees,  # Now includes both Students and Graduates
-        name_filter=name_filter,
-        role_filter=role_filter,
-        month_filter=month_filter,
-        year_filter=year_filter,
-        day_filter=day_filter,
-        total_checkins=total_checkins,
-        earliest_checkin=earliest_checkin,
-        most_active_user_name=most_active_user.fullname if most_active_user else "-",
-        least_active_user_name=least_active_user.fullname if least_active_user else "-",
-        checkins_paginated=checkins_paginated,
-        assignments_paginated=assignments_paginated,
-        timesheets_paginated=timesheets_paginated, 
-        month_counts=month_counts,
-        user_counts=user_counts,  # Changed from student_counts to user_counts
-        attendance_labels=attendance_labels,
-        attendance_counts=attendance_counts,
-        now=datetime.now()
-    )
+        # Apply filters
+        if role_filter:
+            checkins_query = checkins_query.filter(User.role == role_filter)
+        if name_filter:
+            try:
+                checkins_query = checkins_query.filter(CheckIn.user_id == int(name_filter))
+            except ValueError:
+                pass
+        if month_filter:
+            try:
+                checkins_query = checkins_query.filter(db.extract('month', CheckIn.timestamp) == int(month_filter))
+            except ValueError:
+                pass
+        if year_filter:
+            try:
+                checkins_query = checkins_query.filter(db.extract('year', CheckIn.timestamp) == int(year_filter))
+            except ValueError:
+                pass
+        if day_filter:
+            try:
+                date_obj = datetime.fromisoformat(day_filter)
+                checkins_query = checkins_query.filter(db.func.date(CheckIn.timestamp) == date_obj.date())
+            except ValueError:
+                pass
+        
+        checkins_paginated = checkins_query.order_by(CheckIn.timestamp.desc()).paginate(page=page, per_page=PER_PAGE, error_out=False)
+        
+        # Combined assignments query
+        assignments_query = Assignment.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
+        if role_filter:
+            assignments_query = assignments_query.filter(User.role == role_filter)
+        if name_filter:
+            try:
+                assignments_query = assignments_query.filter(Assignment.user_id == int(name_filter))
+            except ValueError:
+                pass
+        assignments_paginated = assignments_query.order_by(Assignment.upload_date.desc()).paginate(page=logpage, per_page=PER_PAGE, error_out=False)
+        
+        # Combined timesheets query
+        timesheets_query = Timesheet.query.join(User).filter(User.role.in_(["Student", "Graduate"]))
+        if role_filter:
+            timesheets_query = timesheets_query.filter(User.role == role_filter)
+        if name_filter:
+            try:
+                timesheets_query = timesheets_query.filter(Timesheet.user_id == int(name_filter))
+            except ValueError:
+                pass
+        if month_filter:
+            try:
+                timesheets_query = timesheets_query.filter(db.extract('month', Timesheet.upload_date) == int(month_filter))
+            except ValueError:
+                pass
+        if year_filter:
+            try:
+                timesheets_query = timesheets_query.filter(db.extract('year', Timesheet.upload_date) == int(year_filter))
+            except ValueError:
+                pass
+        timesheets_paginated = timesheets_query.order_by(Timesheet.upload_date.desc()).paginate(page=timesheet_page, per_page=PER_PAGE, error_out=False)
+        
+        # Combined stats
+        filtered_users = employees
+        if name_filter:
+            filtered_users = [u for u in filtered_users if str(u.id) == name_filter]
+        if role_filter:
+            filtered_users = [u for u in filtered_users if u.role == role_filter]
+            
+        total_checkins = sum(len(u.checkins) for u in filtered_users)
+        most_active_user = max(filtered_users, key=lambda u: len(u.checkins), default=None)
+        least_active_user = min(filtered_users, key=lambda u: len(u.checkins), default=None)
+        
+        # Get earliest check-in from filtered checkins
+        filtered_checkins = checkins_query.all()
+        earliest_checkin = min(filtered_checkins, key=lambda c: c.timestamp, default=None) if filtered_checkins else None
+        
+        # Combined charts data
+        month_counts = [0]*12
+        user_counts = {}
+        attendance_labels = []
+        attendance_counts = []
+        
+        for u in filtered_users:
+            user_counts[u.fullname] = len(u.checkins)
+            attendance_labels.append(u.fullname)
+            attendance_counts.append(len(u.checkins))
+            for c in u.checkins:
+                if month_filter and c.timestamp.month != int(month_filter):
+                    continue
+                if year_filter and c.timestamp.year != int(year_filter):
+                    continue
+                month_counts[c.timestamp.month-1] += 1
+        
+        # Prepare chart data for JSON serialization
+        user_labels = list(user_counts.keys())
+        user_data = list(user_counts.values())
+        
+        return render_template(
+            "mentor_dashboard.html",
+            employees=employees,
+            name_filter=name_filter,
+            role_filter=role_filter,
+            month_filter=month_filter,
+            year_filter=year_filter,
+            day_filter=day_filter,
+            total_checkins=total_checkins,
+            earliest_checkin=earliest_checkin,
+            most_active_user_name=most_active_user.fullname if most_active_user else "-",
+            least_active_user_name=least_active_user.fullname if least_active_user else "-",
+            checkins_paginated=checkins_paginated,
+            assignments_paginated=assignments_paginated,
+            timesheets_paginated=timesheets_paginated,
+            month_counts=month_counts,
+            user_labels=user_labels,
+            user_counts=user_data,
+            attendance_labels=attendance_labels,
+            attendance_counts=attendance_counts,
+            now=datetime.now(),
+            student_stats=None,
+            graduate_stats=None,
+            student_checkins=None,
+            student_assignments=None,
+            student_timesheets=None,
+            graduate_checkins=None,
+            graduate_timesheets=None,
+            # Student chart data (empty for combined view)
+            student_month_counts=[],
+            student_user_labels=[],
+            student_user_counts=[],
+            student_attendance_labels=[],
+            student_attendance_counts=[],
+            # Graduate chart data (empty for combined view)
+            graduate_month_counts=[],
+            graduate_user_labels=[],
+            graduate_user_counts=[],
+            graduate_attendance_labels=[],
+            graduate_attendance_counts=[]
+        )
+    
+    # ========== STUDENTS ONLY VIEW ==========
+    elif current_tab == 'students':
+        # Student filters
+        student_name_filter = request.args.get('student_name', '')
+        student_month_filter = request.args.get('student_month', '')
+        student_year_filter = request.args.get('student_year', '')
+        student_day_filter = request.args.get('student_day', '')
+        
+        # Student page numbers
+        student_page = request.args.get('student_page', 1, type=int)
+        student_logpage = request.args.get('student_logpage', 1, type=int)
+        student_timesheet_page = request.args.get('student_timesheet_page', 1, type=int)
+        
+        # Get only students
+        students = [e for e in employees if e.role == 'Student']
+        
+        # Student check-ins query
+        student_checkins_query = CheckIn.query.join(User).filter(User.role == "Student")
+        if student_name_filter:
+            try:
+                student_checkins_query = student_checkins_query.filter(CheckIn.user_id == int(student_name_filter))
+            except ValueError:
+                pass
+        if student_month_filter:
+            try:
+                student_checkins_query = student_checkins_query.filter(db.extract('month', CheckIn.timestamp) == int(student_month_filter))
+            except ValueError:
+                pass
+        if student_year_filter:
+            try:
+                student_checkins_query = student_checkins_query.filter(db.extract('year', CheckIn.timestamp) == int(student_year_filter))
+            except ValueError:
+                pass
+        if student_day_filter:
+            try:
+                date_obj = datetime.fromisoformat(student_day_filter)
+                student_checkins_query = student_checkins_query.filter(db.func.date(CheckIn.timestamp) == date_obj.date())
+            except ValueError:
+                pass
+        student_checkins = student_checkins_query.order_by(CheckIn.timestamp.desc()).paginate(page=student_page, per_page=PER_PAGE, error_out=False)
+        
+        # Student assignments query
+        student_assignments_query = Assignment.query.join(User).filter(User.role == "Student")
+        if student_name_filter:
+            try:
+                student_assignments_query = student_assignments_query.filter(Assignment.user_id == int(student_name_filter))
+            except ValueError:
+                pass
+        student_assignments = student_assignments_query.order_by(Assignment.upload_date.desc()).paginate(page=student_logpage, per_page=PER_PAGE, error_out=False)
+        
+        # Student timesheets query
+        student_timesheets_query = Timesheet.query.join(User).filter(User.role == "Student")
+        if student_name_filter:
+            try:
+                student_timesheets_query = student_timesheets_query.filter(Timesheet.user_id == int(student_name_filter))
+            except ValueError:
+                pass
+        if student_month_filter:
+            try:
+                student_timesheets_query = student_timesheets_query.filter(db.extract('month', Timesheet.upload_date) == int(student_month_filter))
+            except ValueError:
+                pass
+        if student_year_filter:
+            try:
+                student_timesheets_query = student_timesheets_query.filter(db.extract('year', Timesheet.upload_date) == int(student_year_filter))
+            except ValueError:
+                pass
+        student_timesheets = student_timesheets_query.order_by(Timesheet.upload_date.desc()).paginate(page=student_timesheet_page, per_page=PER_PAGE, error_out=False)
+        
+        # Student stats
+        filtered_students = students
+        if student_name_filter:
+            filtered_students = [s for s in filtered_students if str(s.id) == student_name_filter]
+        
+        student_total_checkins = sum(len(s.checkins) for s in filtered_students)
+        most_active_student = max(filtered_students, key=lambda s: len(s.checkins), default=None)
+        least_active_student = min(filtered_students, key=lambda s: len(s.checkins), default=None)
+        
+        # Get earliest check-in for filtered students
+        student_checkins_list = student_checkins_query.all()
+        student_earliest_checkin = min(student_checkins_list, key=lambda c: c.timestamp, default=None) if student_checkins_list else None
+        
+        student_stats = {
+            'total_checkins': student_total_checkins,
+            'most_active': most_active_student.fullname if most_active_student else '-',
+            'least_active': least_active_student.fullname if least_active_student else '-',
+            'earliest_date': student_earliest_checkin.date if student_earliest_checkin else '-'
+        }
+        
+        # Student charts data
+        student_month_counts = [0]*12
+        student_user_counts = {}
+        student_attendance_labels = []
+        student_attendance_counts = []
+        
+        for s in filtered_students:
+            student_user_counts[s.fullname] = len(s.checkins)
+            student_attendance_labels.append(s.fullname)
+            student_attendance_counts.append(len(s.checkins))
+            for c in s.checkins:
+                if student_month_filter and c.timestamp.month != int(student_month_filter):
+                    continue
+                if student_year_filter and c.timestamp.year != int(student_year_filter):
+                    continue
+                student_month_counts[c.timestamp.month-1] += 1
+        
+        # Prepare chart data for JSON serialization
+        student_user_labels = list(student_user_counts.keys())
+        student_user_data = list(student_user_counts.values())
+        
+        return render_template(
+            "mentor_dashboard.html",
+            employees=employees,
+            student_stats=student_stats,
+            student_checkins=student_checkins,
+            student_assignments=student_assignments,
+            student_timesheets=student_timesheets,
+            now=datetime.now(),
+            # Student chart data
+            student_month_counts=student_month_counts,
+            student_user_labels=student_user_labels,
+            student_user_counts=student_user_data,
+            student_attendance_labels=student_attendance_labels,
+            student_attendance_counts=student_attendance_counts,
+            # Combined chart data (empty for student view)
+            month_counts=[],
+            user_labels=[],
+            user_counts=[],
+            attendance_labels=[],
+            attendance_counts=[],
+            checkins_paginated=None,
+            assignments_paginated=None,
+            timesheets_paginated=None,
+            total_checkins=0,
+            earliest_checkin=None,
+            most_active_user_name='-',
+            least_active_user_name='-',
+            graduate_stats=None,
+            graduate_checkins=None,
+            graduate_timesheets=None,
+            # Graduate chart data (empty for student view)
+            graduate_month_counts=[],
+            graduate_user_labels=[],
+            graduate_user_counts=[],
+            graduate_attendance_labels=[],
+            graduate_attendance_counts=[]
+        )
+    
+    # ========== GRADUATES ONLY VIEW ==========
+    elif current_tab == 'graduates':
+        # Graduate filters
+        graduate_name_filter = request.args.get('graduate_name', '')
+        graduate_month_filter = request.args.get('graduate_month', '')
+        graduate_year_filter = request.args.get('graduate_year', '')
+        graduate_day_filter = request.args.get('graduate_day', '')
+        
+        # Graduate page numbers
+        graduate_page = request.args.get('graduate_page', 1, type=int)
+        graduate_timesheet_page = request.args.get('graduate_timesheet_page', 1, type=int)
+        
+        # Get only graduates
+        graduates = [e for e in employees if e.role == 'Graduate']
+        
+        # Graduate check-ins query
+        graduate_checkins_query = CheckIn.query.join(User).filter(User.role == "Graduate")
+        if graduate_name_filter:
+            try:
+                graduate_checkins_query = graduate_checkins_query.filter(CheckIn.user_id == int(graduate_name_filter))
+            except ValueError:
+                pass
+        if graduate_month_filter:
+            try:
+                graduate_checkins_query = graduate_checkins_query.filter(db.extract('month', CheckIn.timestamp) == int(graduate_month_filter))
+            except ValueError:
+                pass
+        if graduate_year_filter:
+            try:
+                graduate_checkins_query = graduate_checkins_query.filter(db.extract('year', CheckIn.timestamp) == int(graduate_year_filter))
+            except ValueError:
+                pass
+        if graduate_day_filter:
+            try:
+                date_obj = datetime.fromisoformat(graduate_day_filter)
+                graduate_checkins_query = graduate_checkins_query.filter(db.func.date(CheckIn.timestamp) == date_obj.date())
+            except ValueError:
+                pass
+        graduate_checkins = graduate_checkins_query.order_by(CheckIn.timestamp.desc()).paginate(page=graduate_page, per_page=PER_PAGE, error_out=False)
+        
+        # Graduate timesheets query (graduates don't have assignments)
+        graduate_timesheets_query = Timesheet.query.join(User).filter(User.role == "Graduate")
+        if graduate_name_filter:
+            try:
+                graduate_timesheets_query = graduate_timesheets_query.filter(Timesheet.user_id == int(graduate_name_filter))
+            except ValueError:
+                pass
+        if graduate_month_filter:
+            try:
+                graduate_timesheets_query = graduate_timesheets_query.filter(db.extract('month', Timesheet.upload_date) == int(graduate_month_filter))
+            except ValueError:
+                pass
+        if graduate_year_filter:
+            try:
+                graduate_timesheets_query = graduate_timesheets_query.filter(db.extract('year', Timesheet.upload_date) == int(graduate_year_filter))
+            except ValueError:
+                pass
+        graduate_timesheets = graduate_timesheets_query.order_by(Timesheet.upload_date.desc()).paginate(page=graduate_timesheet_page, per_page=PER_PAGE, error_out=False)
+        
+        # Graduate stats
+        filtered_graduates = graduates
+        if graduate_name_filter:
+            filtered_graduates = [g for g in filtered_graduates if str(g.id) == graduate_name_filter]
+        
+        graduate_total_checkins = sum(len(g.checkins) for g in filtered_graduates)
+        most_active_graduate = max(filtered_graduates, key=lambda g: len(g.checkins), default=None)
+        least_active_graduate = min(filtered_graduates, key=lambda g: len(g.checkins), default=None)
+        
+        # Get earliest check-in for filtered graduates
+        graduate_checkins_list = graduate_checkins_query.all()
+        graduate_earliest_checkin = min(graduate_checkins_list, key=lambda c: c.timestamp, default=None) if graduate_checkins_list else None
+        
+        graduate_stats = {
+            'total_checkins': graduate_total_checkins,
+            'most_active': most_active_graduate.fullname if most_active_graduate else '-',
+            'least_active': least_active_graduate.fullname if least_active_graduate else '-',
+            'earliest_date': graduate_earliest_checkin.date if graduate_earliest_checkin else '-'
+        }
+        
+        # Graduate charts data
+        graduate_month_counts = [0]*12
+        graduate_user_counts = {}
+        graduate_attendance_labels = []
+        graduate_attendance_counts = []
+        
+        for g in filtered_graduates:
+            graduate_user_counts[g.fullname] = len(g.checkins)
+            graduate_attendance_labels.append(g.fullname)
+            graduate_attendance_counts.append(len(g.checkins))
+            for c in g.checkins:
+                if graduate_month_filter and c.timestamp.month != int(graduate_month_filter):
+                    continue
+                if graduate_year_filter and c.timestamp.year != int(graduate_year_filter):
+                    continue
+                graduate_month_counts[c.timestamp.month-1] += 1
+        
+        # Prepare chart data for JSON serialization
+        graduate_user_labels = list(graduate_user_counts.keys())
+        graduate_user_data = list(graduate_user_counts.values())
+        
+        return render_template(
+            "mentor_dashboard.html",
+            employees=employees,
+            graduate_stats=graduate_stats,
+            graduate_checkins=graduate_checkins,
+            graduate_timesheets=graduate_timesheets,
+            now=datetime.now(),
+            # Graduate chart data
+            graduate_month_counts=graduate_month_counts,
+            graduate_user_labels=graduate_user_labels,
+            graduate_user_counts=graduate_user_data,
+            graduate_attendance_labels=graduate_attendance_labels,
+            graduate_attendance_counts=graduate_attendance_counts,
+            # Combined chart data (empty for graduate view)
+            month_counts=[],
+            user_labels=[],
+            user_counts=[],
+            attendance_labels=[],
+            attendance_counts=[],
+            checkins_paginated=None,
+            assignments_paginated=None,
+            timesheets_paginated=None,
+            total_checkins=0,
+            earliest_checkin=None,
+            most_active_user_name='-',
+            least_active_user_name='-',
+            student_stats=None,
+            student_checkins=None,
+            student_assignments=None,
+            student_timesheets=None,
+            # Student chart data (empty for graduate view)
+            student_month_counts=[],
+            student_user_labels=[],
+            student_user_counts=[],
+            student_attendance_labels=[],
+            student_attendance_counts=[]
+        )  
 
 
     
