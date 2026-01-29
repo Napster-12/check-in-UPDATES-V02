@@ -9,7 +9,6 @@ from flask_login import (
     login_required, current_user, UserMixin
 )
 
-
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
