@@ -65,6 +65,23 @@
   .tab-content {
     margin-top: 20px;
   }
+
+  /* Badge colors */
+  .badge-student {
+    background-color: #3b82f6;
+    color: white;
+  }
+  .badge-graduate {
+    background-color: #10b981;
+    color: white;
+  }
+
+  /* Chart containers */
+  .chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+  }
 </style>
 
 <div class="container mt-5">
@@ -73,17 +90,17 @@
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="combined-tab" data-bs-toggle="tab" data-bs-target="#combined" type="button" role="tab">
+      <button class="nav-link {% if request.args.get('tab', 'combined') == 'combined' %}active{% endif %}" id="combined-tab" data-bs-toggle="tab" data-bs-target="#combined" type="button" role="tab">
         Combined View
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="students-tab" data-bs-toggle="tab" data-bs-target="#students" type="button" role="tab">
+      <button class="nav-link {% if request.args.get('tab') == 'students' %}active{% endif %}" id="students-tab" data-bs-toggle="tab" data-bs-target="#students" type="button" role="tab">
         Students Only
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="graduates-tab" data-bs-toggle="tab" data-bs-target="#graduates" type="button" role="tab">
+      <button class="nav-link {% if request.args.get('tab') == 'graduates' %}active{% endif %}" id="graduates-tab" data-bs-toggle="tab" data-bs-target="#graduates" type="button" role="tab">
         Graduates Only
       </button>
     </li>
@@ -92,7 +109,7 @@
   <!-- Tab Content -->
   <div class="tab-content" id="dashboardTabsContent">
     <!-- COMBINED VIEW TAB -->
-    <div class="tab-pane fade show active" id="combined" role="tabpanel">
+    <div class="tab-pane fade {% if request.args.get('tab', 'combined') == 'combined' %}show active{% endif %}" id="combined" role="tabpanel">
       <!-- Combined Filters -->
       <div class="card mb-4">
         <div class="card-body">
@@ -104,7 +121,7 @@
               <select name="name" class="form-select" onchange="this.form.submit()">
                 <option value="">All Users (Students & Graduates)</option>
                 {% for e in employees %}
-                <option value="{{ e.id }}" {% if request.args.get('name') == e.id|string and request.args.get('tab') != 'students' and request.args.get('tab') != 'graduates' %}selected{% endif %}>
+                <option value="{{ e.id }}" {% if request.args.get('name') == e.id|string %}selected{% endif %}>
                   {{ e.fullname }} 
                   {% if e.role == 'Student' %}
                     <span class="badge bg-primary role-badge">Student</span>
@@ -119,8 +136,8 @@
               <label class="form-label fw-semibold">Filter by Role</label>
               <select name="role_filter" class="form-select" onchange="this.form.submit()">
                 <option value="">All Roles</option>
-                <option value="Student" {% if request.args.get('role_filter') == 'Student' and request.args.get('tab') != 'students' and request.args.get('tab') != 'graduates' %}selected{% endif %}>Students Only</option>
-                <option value="Graduate" {% if request.args.get('role_filter') == 'Graduate' and request.args.get('tab') != 'students' and request.args.get('tab') != 'graduates' %}selected{% endif %}>Graduates Only</option>
+                <option value="Student" {% if request.args.get('role_filter') == 'Student' %}selected{% endif %}>Students Only</option>
+                <option value="Graduate" {% if request.args.get('role_filter') == 'Graduate' %}selected{% endif %}>Graduates Only</option>
               </select>
             </div>
             <div class="col-md-2">
@@ -128,7 +145,7 @@
               <select name="month" class="form-select" onchange="this.form.submit()">
                 <option value="">All Months</option>
                 {% for i in range(1,13) %}
-                <option value="{{ i }}" {% if request.args.get('month')|int == i and request.args.get('tab') != 'students' and request.args.get('tab') != 'graduates' %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+                <option value="{{ i }}" {% if request.args.get('month')|int == i %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -137,13 +154,13 @@
               <select name="year" class="form-select" onchange="this.form.submit()">
                 <option value="">All Years</option>
                 {% for y in range(2023, now.year+1) %}
-                <option value="{{ y }}" {% if request.args.get('year')|int == y and request.args.get('tab') != 'students' and request.args.get('tab') != 'graduates' %}selected{% endif %}>{{ y }}</option>
+                <option value="{{ y }}" {% if request.args.get('year')|int == y %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold">Filter by Day</label>
-              <input type="date" name="day" class="form-control" value="{% if request.args.get('tab') != 'students' and request.args.get('tab') != 'graduates' %}{{ request.args.get('day','') }}{% endif %}" onchange="this.form.submit()">
+              <input type="date" name="day" class="form-control" value="{{ request.args.get('day','') }}" onchange="this.form.submit()">
             </div>
           </form>
         </div>
@@ -181,11 +198,39 @@
         </div>
       </div>
 
+      <!-- Combined Charts -->
+      <div class="row g-4 mb-5">
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Monthly Check-Ins</h6>
+            <div class="chart-container">
+              <canvas id="combinedMonthChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Check-Ins by User</h6>
+            <div class="chart-container">
+              <canvas id="combinedEmployeeChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Attendance Overview</h6>
+            <div class="chart-container">
+              <canvas id="combinedAttendancePieChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Combined Check-ins Table -->
       <div class="card mb-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h6 class="fw-semibold mb-0 section-header">All User Check-In History</h6>
-          <a href="{{ url_for('export_checkins', name=request.args.get('name'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day'), role_filter=request.args.get('role_filter')) }}" class="btn btn-success btn-sm">
+          <a href="{{ url_for('export_checkins', name=request.args.get('name'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day'), role_filter=request.args.get('role_filter'), tab='combined') }}" class="btn btn-success btn-sm">
             📥 Download Check-Ins
           </a>
         </div>
@@ -202,30 +247,33 @@
               </tr>
             </thead>
             <tbody>
-              {% for c in checkins_paginated.items %}
-              <tr>
-                <td>{{ loop.index + (checkins_paginated.page-1)*checkins_paginated.per_page }}</td>
-                <td>{{ c.user.fullname }}</td>
-                <td>
-                  {% if c.user.role == 'Student' %}
-                    <span class="badge bg-primary role-badge">Student</span>
-                  {% elif c.user.role == 'Graduate' %}
-                    <span class="badge bg-success role-badge">Graduate</span>
-                  {% else %}
-                    <span class="badge bg-secondary role-badge">{{ c.user.role }}</span>
-                  {% endif %}
-                </td>
-                <td>{{ c.date }}</td>
-                <td>{{ c.slot }}</td>
-                <td>{{ c.comment }}</td>
-              </tr>
+              {% if checkins_paginated %}
+                {% for c in checkins_paginated.items %}
+                <tr>
+                  <td>{{ loop.index + (checkins_paginated.page-1)*checkins_paginated.per_page }}</td>
+                  <td>{{ c.user.fullname }}</td>
+                  <td>
+                    {% if c.user.role == 'Student' %}
+                      <span class="badge bg-primary role-badge">Student</span>
+                    {% elif c.user.role == 'Graduate' %}
+                      <span class="badge bg-success role-badge">Graduate</span>
+                    {% else %}
+                      <span class="badge bg-secondary role-badge">{{ c.user.role }}</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ c.date }}</td>
+                  <td>{{ c.slot }}</td>
+                  <td>{{ c.comment }}</td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr><td colspan="6" class="text-center">No check-ins found.</td></tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
 
           <!-- Pagination -->
+          {% if checkins_paginated and checkins_paginated.pages > 1 %}
           <div class="d-flex justify-content-center my-3">
             {% if checkins_paginated.has_prev %}
             <a href="{{ url_for('mentor_dashboard', tab='combined', page=checkins_paginated.prev_num, name=request.args.get('name'), role_filter=request.args.get('role_filter'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-outline-primary btn-sm mx-1">Previous</a>
@@ -235,6 +283,7 @@
             <a href="{{ url_for('mentor_dashboard', tab='combined', page=checkins_paginated.next_num, name=request.args.get('name'), role_filter=request.args.get('role_filter'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-outline-primary btn-sm mx-1">Next</a>
             {% endif %}
           </div>
+          {% endif %}
         </div>
       </div>
 
@@ -257,31 +306,34 @@
               </tr>
             </thead>
             <tbody>
-              {% for a in assignments_paginated.items %}
-              <tr>
-                <td>{{ loop.index + (assignments_paginated.page-1)*assignments_paginated.per_page }}</td>
-                <td>{{ a.user.fullname }}</td>
-                <td>
-                  {% if a.user.role == 'Student' %}
-                    <span class="badge bg-primary role-badge">Student</span>
-                  {% elif a.user.role == 'Graduate' %}
-                    <span class="badge bg-success role-badge">Graduate</span>
-                  {% endif %}
-                </td>
-                <td>{{ a.filename }}</td>
-                <td>{{ a.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>{% if a.wb1_submitted %}✅{% else %}-{% endif %}</td>
-                <td>{% if a.wbl2_submitted %}✅{% else %}-{% endif %}</td>
-                <td>{% if a.wbl3_submitted %}✅{% else %}-{% endif %}</td>
-                <td><a href="{{ url_for('mentor_download', assignment_id=a.id) }}" class="btn btn-sm btn-primary">Download</a></td>
-              </tr>
+              {% if assignments_paginated and assignments_paginated.items %}
+                {% for a in assignments_paginated.items %}
+                <tr>
+                  <td>{{ loop.index + (assignments_paginated.page-1)*assignments_paginated.per_page }}</td>
+                  <td>{{ a.user.fullname }}</td>
+                  <td>
+                    {% if a.user.role == 'Student' %}
+                      <span class="badge bg-primary role-badge">Student</span>
+                    {% elif a.user.role == 'Graduate' %}
+                      <span class="badge bg-success role-badge">Graduate</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ a.filename }}</td>
+                  <td>{{ a.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>{% if a.wb1_submitted %}✅{% else %}-{% endif %}</td>
+                  <td>{% if a.wbl2_submitted %}✅{% else %}-{% endif %}</td>
+                  <td>{% if a.wbl3_submitted %}✅{% else %}-{% endif %}</td>
+                  <td><a href="{{ url_for('mentor_download', assignment_id=a.id) }}" class="btn btn-sm btn-primary">Download</a></td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr><td colspan="9" class="text-center">No submissions yet.</td></tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
 
           <!-- Pagination -->
+          {% if assignments_paginated and assignments_paginated.pages > 1 %}
           <div class="d-flex justify-content-center my-3">
             {% if assignments_paginated.has_prev %}
             <a href="{{ url_for('mentor_dashboard', tab='combined', logpage=assignments_paginated.prev_num, name=request.args.get('name'), role_filter=request.args.get('role_filter'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-outline-primary btn-sm mx-1">Previous</a>
@@ -291,6 +343,7 @@
             <a href="{{ url_for('mentor_dashboard', tab='combined', logpage=assignments_paginated.next_num, name=request.args.get('name'), role_filter=request.args.get('role_filter'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-outline-primary btn-sm mx-1">Next</a>
             {% endif %}
           </div>
+          {% endif %}
         </div>
       </div>
 
@@ -310,35 +363,38 @@
               </tr>
             </thead>
             <tbody>
-              {% for ts in timesheets_paginated.items %}
-              <tr>
-                <td>{{ loop.index + (timesheets_paginated.page - 1) * timesheets_paginated.per_page }}</td>
-                <td>{{ ts.user.fullname }}</td>
-                <td>
-                  {% if ts.user.role == 'Student' %}
-                    <span class="badge bg-primary role-badge">Student</span>
-                  {% elif ts.user.role == 'Graduate' %}
-                    <span class="badge bg-success role-badge">Graduate</span>
-                  {% endif %}
-                </td>
-                <td>{{ ts.filename }}</td>
-                <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>
-                  <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}" class="btn btn-sm btn-primary">
-                    Download Timesheet
-                  </a>
-                </td>
-              </tr>
+              {% if timesheets_paginated and timesheets_paginated.items %}
+                {% for ts in timesheets_paginated.items %}
+                <tr>
+                  <td>{{ loop.index + (timesheets_paginated.page - 1) * timesheets_paginated.per_page }}</td>
+                  <td>{{ ts.user.fullname }}</td>
+                  <td>
+                    {% if ts.user.role == 'Student' %}
+                      <span class="badge bg-primary role-badge">Student</span>
+                    {% elif ts.user.role == 'Graduate' %}
+                      <span class="badge bg-success role-badge">Graduate</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ ts.filename }}</td>
+                  <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>
+                    <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}" class="btn btn-sm btn-primary">
+                      Download Timesheet
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr>
                 <td colspan="6" class="text-center">No timesheets submitted yet.</td>
               </tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
         </div>
 
         <!-- Pagination -->
+        {% if timesheets_paginated and timesheets_paginated.pages > 1 %}
         <nav aria-label="Timesheet pagination">
           <ul class="pagination justify-content-center mt-3">
             {% if timesheets_paginated.has_prev %}
@@ -370,11 +426,12 @@
             {% endif %}
           </ul>
         </nav>
+        {% endif %}
       </div>
     </div>
 
     <!-- STUDENTS ONLY TAB -->
-    <div class="tab-pane fade" id="students" role="tabpanel">
+    <div class="tab-pane fade {% if request.args.get('tab') == 'students' %}show active{% endif %}" id="students" role="tabpanel">
       <!-- Students Filters -->
       <div class="card mb-4">
         <div class="card-body">
@@ -386,7 +443,7 @@
               <select name="student_name" class="form-select" onchange="this.form.submit()">
                 <option value="">All Students</option>
                 {% for e in employees if e.role == 'Student' %}
-                <option value="{{ e.id }}" {% if request.args.get('student_name') == e.id|string and request.args.get('tab') == 'students' %}selected{% endif %}>
+                <option value="{{ e.id }}" {% if request.args.get('student_name') == e.id|string %}selected{% endif %}>
                   {{ e.fullname }}
                   <span class="badge bg-primary role-badge">Student</span>
                 </option>
@@ -398,7 +455,7 @@
               <select name="student_month" class="form-select" onchange="this.form.submit()">
                 <option value="">All Months</option>
                 {% for i in range(1,13) %}
-                <option value="{{ i }}" {% if request.args.get('student_month')|int == i and request.args.get('tab') == 'students' %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+                <option value="{{ i }}" {% if request.args.get('student_month')|int == i %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -407,13 +464,13 @@
               <select name="student_year" class="form-select" onchange="this.form.submit()">
                 <option value="">All Years</option>
                 {% for y in range(2023, now.year+1) %}
-                <option value="{{ y }}" {% if request.args.get('student_year')|int == y and request.args.get('tab') == 'students' %}selected{% endif %}>{{ y }}</option>
+                <option value="{{ y }}" {% if request.args.get('student_year')|int == y %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold">Filter by Day</label>
-              <input type="date" name="student_day" class="form-control" value="{% if request.args.get('tab') == 'students' %}{{ request.args.get('student_day','') }}{% endif %}" onchange="this.form.submit()">
+              <input type="date" name="student_day" class="form-control" value="{{ request.args.get('student_day','') }}" onchange="this.form.submit()">
             </div>
             <div class="col-md-2">
               <button type="submit" class="btn btn-primary w-100">Apply Filters</button>
@@ -422,11 +479,71 @@
         </div>
       </div>
 
+      <!-- Students Stats -->
+      <div class="row g-4 mb-4">
+        <div class="col-md-3">
+          <div class="card stat-card text-center student-stat">
+            <h6>Student Check-Ins</h6>
+            <h3>{{ student_stats.total_checkins if student_stats else '0' }}</h3>
+            <small class="text-muted">Students Only</small>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center student-stat">
+            <h6>Earliest Check-In</h6>
+            <h3>{{ student_stats.earliest_date if student_stats and student_stats.earliest_date else '-' }}</h3>
+            <small class="text-muted">Students Only</small>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center student-stat">
+            <h6>Most Active Student</h6>
+            <h3>{{ student_stats.most_active if student_stats and student_stats.most_active else '-' }}</h3>
+            <small class="text-muted">Students Only</small>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center student-stat">
+            <h6>Least Active Student</h6>
+            <h3>{{ student_stats.least_active if student_stats and student_stats.least_active else '-' }}</h3>
+            <small class="text-muted">Students Only</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Students Charts -->
+      <div class="row g-4 mb-5">
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Student Monthly Check-Ins</h6>
+            <div class="chart-container">
+              <canvas id="studentMonthChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Student Check-Ins by User</h6>
+            <div class="chart-container">
+              <canvas id="studentEmployeeChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Student Attendance Overview</h6>
+            <div class="chart-container">
+              <canvas id="studentAttendancePieChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Students Check-ins Table -->
       <div class="card mb-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h6 class="fw-semibold mb-0 student-section">Student Check-In History</h6>
-          <a href="{{ url_for('export_checkins', name=request.args.get('student_name'), month=request.args.get('student_month'), year=request.args.get('student_year'), day=request.args.get('student_day'), role_filter='Student') }}" class="btn btn-success btn-sm">
+          <a href="{{ url_for('export_checkins', name=request.args.get('student_name'), month=request.args.get('student_month'), year=request.args.get('student_year'), day=request.args.get('student_day'), role_filter='Student', tab='students') }}" class="btn btn-success btn-sm">
             📥 Download Student Check-Ins
           </a>
         </div>
@@ -442,19 +559,34 @@
               </tr>
             </thead>
             <tbody>
-              {% for c in checkins_paginated.items if c.user.role == 'Student' %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ c.user.fullname }}</td>
-                <td>{{ c.date }}</td>
-                <td>{{ c.slot }}</td>
-                <td>{{ c.comment }}</td>
-              </tr>
+              {% if student_checkins and student_checkins.items %}
+                {% for c in student_checkins.items %}
+                <tr>
+                  <td>{{ loop.index + (student_checkins.page-1)*student_checkins.per_page }}</td>
+                  <td>{{ c.user.fullname }}</td>
+                  <td>{{ c.date }}</td>
+                  <td>{{ c.slot }}</td>
+                  <td>{{ c.comment }}</td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr><td colspan="5" class="text-center">No student check-ins found.</td></tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          {% if student_checkins and student_checkins.pages > 1 %}
+          <div class="d-flex justify-content-center my-3">
+            {% if student_checkins.has_prev %}
+            <a href="{{ url_for('mentor_dashboard', tab='students', student_page=student_checkins.prev_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}" class="btn btn-outline-primary btn-sm mx-1">Previous</a>
+            {% endif %}
+            <span class="mx-2">Page {{ student_checkins.page }} of {{ student_checkins.pages }}</span>
+            {% if student_checkins.has_next %}
+            <a href="{{ url_for('mentor_dashboard', tab='students', student_page=student_checkins.next_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}" class="btn btn-outline-primary btn-sm mx-1">Next</a>
+            {% endif %}
+          </div>
+          {% endif %}
         </div>
       </div>
 
@@ -476,22 +608,37 @@
               </tr>
             </thead>
             <tbody>
-              {% for a in assignments_paginated.items if a.user.role == 'Student' %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ a.user.fullname }}</td>
-                <td>{{ a.filename }}</td>
-                <td>{{ a.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>{% if a.wb1_submitted %}✅{% else %}-{% endif %}</td>
-                <td>{% if a.wbl2_submitted %}✅{% else %}-{% endif %}</td>
-                <td>{% if a.wbl3_submitted %}✅{% else %}-{% endif %}</td>
-                <td><a href="{{ url_for('mentor_download', assignment_id=a.id) }}" class="btn btn-sm btn-primary">Download</a></td>
-              </tr>
+              {% if student_assignments and student_assignments.items %}
+                {% for a in student_assignments.items %}
+                <tr>
+                  <td>{{ loop.index + (student_assignments.page-1)*student_assignments.per_page }}</td>
+                  <td>{{ a.user.fullname }}</td>
+                  <td>{{ a.filename }}</td>
+                  <td>{{ a.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>{% if a.wb1_submitted %}✅{% else %}-{% endif %}</td>
+                  <td>{% if a.wbl2_submitted %}✅{% else %}-{% endif %}</td>
+                  <td>{% if a.wbl3_submitted %}✅{% else %}-{% endif %}</td>
+                  <td><a href="{{ url_for('mentor_download', assignment_id=a.id) }}" class="btn btn-sm btn-primary">Download</a></td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr><td colspan="8" class="text-center">No student submissions yet.</td></tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          {% if student_assignments and student_assignments.pages > 1 %}
+          <div class="d-flex justify-content-center my-3">
+            {% if student_assignments.has_prev %}
+            <a href="{{ url_for('mentor_dashboard', tab='students', student_logpage=student_assignments.prev_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}" class="btn btn-outline-primary btn-sm mx-1">Previous</a>
+            {% endif %}
+            <span class="mx-2">Page {{ student_assignments.page }} of {{ student_assignments.pages }}</span>
+            {% if student_assignments.has_next %}
+            <a href="{{ url_for('mentor_dashboard', tab='students', student_logpage=student_assignments.next_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}" class="btn btn-outline-primary btn-sm mx-1">Next</a>
+            {% endif %}
+          </div>
+          {% endif %}
         </div>
       </div>
 
@@ -510,31 +657,70 @@
               </tr>
             </thead>
             <tbody>
-              {% for ts in timesheets_paginated.items if ts.user.role == 'Student' %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ ts.user.fullname }}</td>
-                <td>{{ ts.filename }}</td>
-                <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>
-                  <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}" class="btn btn-sm btn-primary">
-                    Download Timesheet
-                  </a>
-                </td>
-              </tr>
+              {% if student_timesheets and student_timesheets.items %}
+                {% for ts in student_timesheets.items %}
+                <tr>
+                  <td>{{ loop.index + (student_timesheets.page - 1) * student_timesheets.per_page }}</td>
+                  <td>{{ ts.user.fullname }}</td>
+                  <td>{{ ts.filename }}</td>
+                  <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>
+                    <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}" class="btn btn-sm btn-primary">
+                      Download Timesheet
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr>
                 <td colspan="5" class="text-center">No student timesheets submitted yet.</td>
               </tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          {% if student_timesheets and student_timesheets.pages > 1 %}
+          <nav aria-label="Timesheet pagination">
+            <ul class="pagination justify-content-center mt-3">
+              {% if student_timesheets.has_prev %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('mentor_dashboard', tab='students', student_timesheet_page=student_timesheets.prev_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}">Previous</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">Previous</span></li>
+              {% endif %}
+
+              {% if student_timesheets.pages > 1 %}
+                {% for page_num in student_timesheets.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                  {% if page_num %}
+                    {% if page_num == student_timesheets.page %}
+                      <li class="page-item active"><span class="page-link">{{ page_num }}</span></li>
+                    {% else %}
+                      <li class="page-item"><a class="page-link" href="{{ url_for('mentor_dashboard', tab='students', student_timesheet_page=page_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}">{{ page_num }}</a></li>
+                    {% endif %}
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+
+              {% if student_timesheets.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('mentor_dashboard', tab='students', student_timesheet_page=student_timesheets.next_num, student_name=request.args.get('student_name'), student_month=request.args.get('student_month'), student_year=request.args.get('student_year'), student_day=request.args.get('student_day')) }}">Next</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">Next</span></li>
+              {% endif %}
+            </ul>
+          </nav>
+          {% endif %}
         </div>
       </div>
     </div>
 
     <!-- GRADUATES ONLY TAB -->
-    <div class="tab-pane fade" id="graduates" role="tabpanel">
+    <div class="tab-pane fade {% if request.args.get('tab') == 'graduates' %}show active{% endif %}" id="graduates" role="tabpanel">
       <!-- Graduates Filters -->
       <div class="card mb-4">
         <div class="card-body">
@@ -546,7 +732,7 @@
               <select name="graduate_name" class="form-select" onchange="this.form.submit()">
                 <option value="">All Graduates</option>
                 {% for e in employees if e.role == 'Graduate' %}
-                <option value="{{ e.id }}" {% if request.args.get('graduate_name') == e.id|string and request.args.get('tab') == 'graduates' %}selected{% endif %}>
+                <option value="{{ e.id }}" {% if request.args.get('graduate_name') == e.id|string %}selected{% endif %}>
                   {{ e.fullname }}
                   <span class="badge bg-success role-badge">Graduate</span>
                 </option>
@@ -558,7 +744,7 @@
               <select name="graduate_month" class="form-select" onchange="this.form.submit()">
                 <option value="">All Months</option>
                 {% for i in range(1,13) %}
-                <option value="{{ i }}" {% if request.args.get('graduate_month')|int == i and request.args.get('tab') == 'graduates' %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+                <option value="{{ i }}" {% if request.args.get('graduate_month')|int == i %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -567,13 +753,13 @@
               <select name="graduate_year" class="form-select" onchange="this.form.submit()">
                 <option value="">All Years</option>
                 {% for y in range(2023, now.year+1) %}
-                <option value="{{ y }}" {% if request.args.get('graduate_year')|int == y and request.args.get('tab') == 'graduates' %}selected{% endif %}>{{ y }}</option>
+                <option value="{{ y }}" {% if request.args.get('graduate_year')|int == y %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold">Filter by Day</label>
-              <input type="date" name="graduate_day" class="form-control" value="{% if request.args.get('tab') == 'graduates' %}{{ request.args.get('graduate_day','') }}{% endif %}" onchange="this.form.submit()">
+              <input type="date" name="graduate_day" class="form-control" value="{{ request.args.get('graduate_day','') }}" onchange="this.form.submit()">
             </div>
             <div class="col-md-2">
               <button type="submit" class="btn btn-success w-100">Apply Filters</button>
@@ -582,11 +768,71 @@
         </div>
       </div>
 
+      <!-- Graduates Stats -->
+      <div class="row g-4 mb-4">
+        <div class="col-md-3">
+          <div class="card stat-card text-center graduate-stat">
+            <h6>Graduate Check-Ins</h6>
+            <h3>{{ graduate_stats.total_checkins if graduate_stats else '0' }}</h3>
+            <small class="text-muted">Graduates Only</small>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center graduate-stat">
+            <h6>Earliest Check-In</h6>
+            <h3>{{ graduate_stats.earliest_date if graduate_stats and graduate_stats.earliest_date else '-' }}</h3>
+            <small class="text-muted">Graduates Only</small>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center graduate-stat">
+            <h6>Most Active Graduate</h6>
+            <h3>{{ graduate_stats.most_active if graduate_stats and graduate_stats.most_active else '-' }}</h3>
+            <small class="text-muted">Graduates Only</small>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card stat-card text-center graduate-stat">
+            <h6>Least Active Graduate</h6>
+            <h3>{{ graduate_stats.least_active if graduate_stats and graduate_stats.least_active else '-' }}</h3>
+            <small class="text-muted">Graduates Only</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Graduates Charts -->
+      <div class="row g-4 mb-5">
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Graduate Monthly Check-Ins</h6>
+            <div class="chart-container">
+              <canvas id="graduateMonthChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Graduate Check-Ins by User</h6>
+            <div class="chart-container">
+              <canvas id="graduateEmployeeChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h6 class="text-center fw-semibold mb-3">Graduate Attendance Overview</h6>
+            <div class="chart-container">
+              <canvas id="graduateAttendancePieChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Graduates Check-ins Table -->
       <div class="card mb-5">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h6 class="fw-semibold mb-0 graduate-section">Graduate Check-In History</h6>
-          <a href="{{ url_for('export_checkins', name=request.args.get('graduate_name'), month=request.args.get('graduate_month'), year=request.args.get('graduate_year'), day=request.args.get('graduate_day'), role_filter='Graduate') }}" class="btn btn-success btn-sm">
+          <a href="{{ url_for('export_checkins', name=request.args.get('graduate_name'), month=request.args.get('graduate_month'), year=request.args.get('graduate_year'), day=request.args.get('graduate_day'), role_filter='Graduate', tab='graduates') }}" class="btn btn-success btn-sm">
             📥 Download Graduate Check-Ins
           </a>
         </div>
@@ -602,19 +848,34 @@
               </tr>
             </thead>
             <tbody>
-              {% for c in checkins_paginated.items if c.user.role == 'Graduate' %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ c.user.fullname }}</td>
-                <td>{{ c.date }}</td>
-                <td>{{ c.slot }}</td>
-                <td>{{ c.comment }}</td>
-              </tr>
+              {% if graduate_checkins and graduate_checkins.items %}
+                {% for c in graduate_checkins.items %}
+                <tr>
+                  <td>{{ loop.index + (graduate_checkins.page-1)*graduate_checkins.per_page }}</td>
+                  <td>{{ c.user.fullname }}</td>
+                  <td>{{ c.date }}</td>
+                  <td>{{ c.slot }}</td>
+                  <td>{{ c.comment }}</td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr><td colspan="5" class="text-center">No graduate check-ins found.</td></tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          {% if graduate_checkins and graduate_checkins.pages > 1 %}
+          <div class="d-flex justify-content-center my-3">
+            {% if graduate_checkins.has_prev %}
+            <a href="{{ url_for('mentor_dashboard', tab='graduates', graduate_page=graduate_checkins.prev_num, graduate_name=request.args.get('graduate_name'), graduate_month=request.args.get('graduate_month'), graduate_year=request.args.get('graduate_year'), graduate_day=request.args.get('graduate_day')) }}" class="btn btn-outline-primary btn-sm mx-1">Previous</a>
+            {% endif %}
+            <span class="mx-2">Page {{ graduate_checkins.page }} of {{ graduate_checkins.pages }}</span>
+            {% if graduate_checkins.has_next %}
+            <a href="{{ url_for('mentor_dashboard', tab='graduates', graduate_page=graduate_checkins.next_num, graduate_name=request.args.get('graduate_name'), graduate_month=request.args.get('graduate_month'), graduate_year=request.args.get('graduate_year'), graduate_day=request.args.get('graduate_day')) }}" class="btn btn-outline-primary btn-sm mx-1">Next</a>
+            {% endif %}
+          </div>
+          {% endif %}
         </div>
       </div>
 
@@ -633,25 +894,64 @@
               </tr>
             </thead>
             <tbody>
-              {% for ts in timesheets_paginated.items if ts.user.role == 'Graduate' %}
-              <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ ts.user.fullname }}</td>
-                <td>{{ ts.filename }}</td>
-                <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>
-                  <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}" class="btn btn-sm btn-primary">
-                    Download Timesheet
-                  </a>
-                </td>
-              </tr>
+              {% if graduate_timesheets and graduate_timesheets.items %}
+                {% for ts in graduate_timesheets.items %}
+                <tr>
+                  <td>{{ loop.index + (graduate_timesheets.page - 1) * graduate_timesheets.per_page }}</td>
+                  <td>{{ ts.user.fullname }}</td>
+                  <td>{{ ts.filename }}</td>
+                  <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+                  <td>
+                    <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}" class="btn btn-sm btn-primary">
+                      Download Timesheet
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
               {% else %}
               <tr>
                 <td colspan="5" class="text-center">No graduate timesheets submitted yet.</td>
               </tr>
-              {% endfor %}
+              {% endif %}
             </tbody>
           </table>
+
+          <!-- Pagination -->
+          {% if graduate_timesheets and graduate_timesheets.pages > 1 %}
+          <nav aria-label="Timesheet pagination">
+            <ul class="pagination justify-content-center mt-3">
+              {% if graduate_timesheets.has_prev %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('mentor_dashboard', tab='graduates', graduate_timesheet_page=graduate_timesheets.prev_num, graduate_name=request.args.get('graduate_name'), graduate_month=request.args.get('graduate_month'), graduate_year=request.args.get('graduate_year'), graduate_day=request.args.get('graduate_day')) }}">Previous</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">Previous</span></li>
+              {% endif %}
+
+              {% if graduate_timesheets.pages > 1 %}
+                {% for page_num in graduate_timesheets.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                  {% if page_num %}
+                    {% if page_num == graduate_timesheets.page %}
+                      <li class="page-item active"><span class="page-link">{{ page_num }}</span></li>
+                    {% else %}
+                      <li class="page-item"><a class="page-link" href="{{ url_for('mentor_dashboard', tab='graduates', graduate_timesheet_page=page_num, graduate_name=request.args.get('graduate_name'), graduate_month=request.args.get('graduate_month'), graduate_year=request.args.get('graduate_year'), graduate_day=request.args.get('graduate_day')) }}">{{ page_num }}</a></li>
+                    {% endif %}
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+
+              {% if graduate_timesheets.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('mentor_dashboard', tab='graduates', graduate_timesheet_page=graduate_timesheets.next_num, graduate_name=request.args.get('graduate_name'), graduate_month=request.args.get('graduate_month'), graduate_year=request.args.get('graduate_year'), graduate_day=request.args.get('graduate_day')) }}">Next</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">Next</span></li>
+              {% endif %}
+            </ul>
+          </nav>
+          {% endif %}
         </div>
       </div>
 
@@ -662,112 +962,440 @@
       </div>
     </div>
   </div>
-
-  <!-- Charts Section (Always Visible) -->
-  <div class="row g-4 mb-5">
-    <div class="col-md-4">
-      <div class="card">
-        <h6 class="text-center fw-semibold mb-3">Monthly Check-Ins</h6>
-        <canvas id="monthChart"></canvas>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="card">
-        <h6 class="text-center fw-semibold mb-3">Check-Ins by User</h6>
-        <canvas id="employeeChart"></canvas>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="card">
-        <h6 class="text-center fw-semibold mb-3">Attendance Overview</h6>
-        <canvas id="attendancePieChart"></canvas>
-      </div>
-    </div>
-  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-const monthCtx = document.getElementById('monthChart').getContext('2d');
-new Chart(monthCtx, {
-  type: 'bar',
-  data: {
-    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-    datasets: [{ 
-      label: 'Check-Ins per Month', 
-      data: {{ month_counts|safe }}, 
-      backgroundColor: '#3b82f6' 
-    }]
-  },
-  options: { 
-    scales: { y: { beginAtZero:true } },
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top'
-      }
-    }
-  }
-});
+// Chart instances
+let combinedMonthChart = null;
+let combinedEmployeeChart = null;
+let combinedAttendanceChart = null;
+let studentMonthChart = null;
+let studentEmployeeChart = null;
+let studentAttendanceChart = null;
+let graduateMonthChart = null;
+let graduateEmployeeChart = null;
+let graduateAttendanceChart = null;
 
-const employeeCtx = document.getElementById('employeeChart').getContext('2d');
-new Chart(employeeCtx, {
-  type: 'bar',
-  data: {
-    labels: {{ user_counts.keys()|list|safe }},
-    datasets: [{ 
-      label: 'Check-Ins by User', 
-      data: {{ user_counts.values()|list|safe }}, 
-      backgroundColor: '#f59e0b' 
-    }]
-  },
-  options: { 
-    scales: { y: { beginAtZero:true } },
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top'
-      }
+// Function to destroy chart if it exists
+function destroyChart(chart) {
+    if (chart) {
+        chart.destroy();
     }
-  }
-});
+}
 
-const attendanceCtx = document.getElementById('attendancePieChart').getContext('2d');
-new Chart(attendanceCtx, {
-  type: 'pie',
-  data: {
-    labels: {{ attendance_labels|safe }},
-    datasets: [{ 
-      data: {{ attendance_counts|safe }}, 
-      backgroundColor: [
-        '#3b82f6','#f59e0b','#10b981','#6366F1','#F43F5E',
-        '#8B5CF6','#EC4899','#14b8a6','#84cc16','#ef4444'
-      ] 
-    }]
-  },
-  options: {
-    plugins: {
-      legend: {
-        position: 'right',
-        labels: {
-          font: {
-            size: 11
-          }
-        }
-      }
+// Initialize Combined Charts
+function initializeCombinedCharts() {
+    // Combined Monthly Check-Ins Chart
+    const combinedMonthCtx = document.getElementById('combinedMonthChart');
+    if (combinedMonthCtx) {
+        destroyChart(combinedMonthChart);
+        combinedMonthChart = new Chart(combinedMonthCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+                datasets: [{ 
+                    label: 'Check-Ins per Month', 
+                    data: {{ month_counts|safe }}, 
+                    backgroundColor: '#3b82f6' 
+                }]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    } 
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
     }
-  }
-});
 
-// Initialize Bootstrap tabs
-var triggerTabList = [].slice.call(document.querySelectorAll('#dashboardTabs button'))
-triggerTabList.forEach(function (triggerEl) {
-  var tabTrigger = new bootstrap.Tab(triggerEl)
-  triggerEl.addEventListener('click', function (event) {
-    event.preventDefault()
-    tabTrigger.show()
-  })
+    // Combined Check-Ins by User Chart
+    const combinedEmployeeCtx = document.getElementById('combinedEmployeeChart');
+    if (combinedEmployeeCtx) {
+        destroyChart(combinedEmployeeChart);
+        combinedEmployeeChart = new Chart(combinedEmployeeCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ user_labels|safe }},
+                datasets: [{ 
+                    label: 'Check-Ins by User', 
+                    data: {{ user_counts|safe }}, 
+                    backgroundColor: '#f59e0b' 
+                }]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    } 
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    // Combined Attendance Overview Chart
+    const combinedAttendanceCtx = document.getElementById('combinedAttendancePieChart');
+    if (combinedAttendanceCtx) {
+        destroyChart(combinedAttendanceChart);
+        combinedAttendanceChart = new Chart(combinedAttendanceCtx, {
+            type: 'pie',
+            data: {
+                labels: {{ attendance_labels|safe }},
+                datasets: [{ 
+                    data: {{ attendance_counts|safe }}, 
+                    backgroundColor: [
+                        '#3b82f6','#f59e0b','#10b981','#6366F1','#F43F5E',
+                        '#8B5CF6','#EC4899','#14b8a6','#84cc16','#ef4444'
+                    ] 
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Initialize Student Charts
+function initializeStudentCharts() {
+    // Student Monthly Check-Ins Chart
+    const studentMonthCtx = document.getElementById('studentMonthChart');
+    if (studentMonthCtx) {
+        destroyChart(studentMonthChart);
+        studentMonthChart = new Chart(studentMonthCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+                datasets: [{ 
+                    label: 'Student Check-Ins per Month', 
+                    data: {{ student_month_counts|safe if student_month_counts else [] }}, 
+                    backgroundColor: '#3b82f6' 
+                }]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    } 
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    // Student Check-Ins by User Chart
+    const studentEmployeeCtx = document.getElementById('studentEmployeeChart');
+    if (studentEmployeeCtx) {
+        destroyChart(studentEmployeeChart);
+        studentEmployeeChart = new Chart(studentEmployeeCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ student_user_labels|safe if student_user_labels else [] }},
+                datasets: [{ 
+                    label: 'Student Check-Ins by User', 
+                    data: {{ student_user_counts|safe if student_user_counts else [] }}, 
+                    backgroundColor: '#f59e0b' 
+                }]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    } 
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    // Student Attendance Overview Chart
+    const studentAttendanceCtx = document.getElementById('studentAttendancePieChart');
+    if (studentAttendanceCtx) {
+        destroyChart(studentAttendanceChart);
+        studentAttendanceChart = new Chart(studentAttendanceCtx, {
+            type: 'pie',
+            data: {
+                labels: {{ student_attendance_labels|safe if student_attendance_labels else [] }},
+                datasets: [{ 
+                    data: {{ student_attendance_counts|safe if student_attendance_counts else [] }}, 
+                    backgroundColor: [
+                        '#3b82f6','#f59e0b','#10b981','#6366F1','#F43F5E',
+                        '#8B5CF6','#EC4899','#14b8a6','#84cc16','#ef4444'
+                    ] 
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Initialize Graduate Charts
+function initializeGraduateCharts() {
+    // Graduate Monthly Check-Ins Chart
+    const graduateMonthCtx = document.getElementById('graduateMonthChart');
+    if (graduateMonthCtx) {
+        destroyChart(graduateMonthChart);
+        graduateMonthChart = new Chart(graduateMonthCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+                datasets: [{ 
+                    label: 'Graduate Check-Ins per Month', 
+                    data: {{ graduate_month_counts|safe if graduate_month_counts else [] }}, 
+                    backgroundColor: '#10b981' 
+                }]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    } 
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    // Graduate Check-Ins by User Chart
+    const graduateEmployeeCtx = document.getElementById('graduateEmployeeChart');
+    if (graduateEmployeeCtx) {
+        destroyChart(graduateEmployeeChart);
+        graduateEmployeeChart = new Chart(graduateEmployeeCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ graduate_user_labels|safe if graduate_user_labels else [] }},
+                datasets: [{ 
+                    label: 'Graduate Check-Ins by User', 
+                    data: {{ graduate_user_counts|safe if graduate_user_counts else [] }}, 
+                    backgroundColor: '#10b981' 
+                }]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    } 
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    }
+
+    // Graduate Attendance Overview Chart
+    const graduateAttendanceCtx = document.getElementById('graduateAttendancePieChart');
+    if (graduateAttendanceCtx) {
+        destroyChart(graduateAttendanceChart);
+        graduateAttendanceChart = new Chart(graduateAttendanceCtx, {
+            type: 'pie',
+            data: {
+                labels: {{ graduate_attendance_labels|safe if graduate_attendance_labels else [] }},
+                datasets: [{ 
+                    data: {{ graduate_attendance_counts|safe if graduate_attendance_counts else [] }}, 
+                    backgroundColor: [
+                        '#10b981','#3b82f6','#f59e0b','#6366F1','#F43F5E',
+                        '#8B5CF6','#EC4899','#14b8a6','#84cc16','#ef4444'
+                    ] 
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 11
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// Get current tab and filter parameters
+const urlParams = new URLSearchParams(window.location.search);
+const currentTab = urlParams.get('tab') || 'combined';
+
+// Initialize charts based on current tab
+document.addEventListener('DOMContentLoaded', function() {
+    // Activate the correct tab
+    const tabElement = document.getElementById(currentTab + '-tab');
+    if (tabElement) {
+        const tab = new bootstrap.Tab(tabElement);
+        tab.show();
+    }
+    
+    // Initialize charts for current tab
+    if (currentTab === 'combined') {
+        initializeCombinedCharts();
+    } else if (currentTab === 'students') {
+        initializeStudentCharts();
+    } else if (currentTab === 'graduates') {
+        initializeGraduateCharts();
+    }
+    
+    // Add click handlers to update URL when tabs are clicked
+    const tabButtons = document.querySelectorAll('#dashboardTabs button[data-bs-toggle="tab"]');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            const tabId = this.getAttribute('id').replace('-tab', '');
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tabId);
+            
+            // Clear other tab's filter parameters when switching tabs
+            if (tabId === 'combined') {
+                url.searchParams.delete('student_name');
+                url.searchParams.delete('student_month');
+                url.searchParams.delete('student_year');
+                url.searchParams.delete('student_day');
+                url.searchParams.delete('graduate_name');
+                url.searchParams.delete('graduate_month');
+                url.searchParams.delete('graduate_year');
+                url.searchParams.delete('graduate_day');
+            } else if (tabId === 'students') {
+                url.searchParams.delete('name');
+                url.searchParams.delete('role_filter');
+                url.searchParams.delete('month');
+                url.searchParams.delete('year');
+                url.searchParams.delete('day');
+                url.searchParams.delete('graduate_name');
+                url.searchParams.delete('graduate_month');
+                url.searchParams.delete('graduate_year');
+                url.searchParams.delete('graduate_day');
+            } else if (tabId === 'graduates') {
+                url.searchParams.delete('name');
+                url.searchParams.delete('role_filter');
+                url.searchParams.delete('month');
+                url.searchParams.delete('year');
+                url.searchParams.delete('day');
+                url.searchParams.delete('student_name');
+                url.searchParams.delete('student_month');
+                url.searchParams.delete('student_year');
+                url.searchParams.delete('student_day');
+            }
+            
+            window.history.pushState({}, '', url);
+        });
+    });
+
+    // Handle tab shown event to initialize charts when tab changes
+    const dashboardTabs = document.getElementById('dashboardTabs');
+    dashboardTabs.addEventListener('shown.bs.tab', function(event) {
+        const activeTab = event.target.getAttribute('id').replace('-tab', '');
+        
+        // Destroy all charts first
+        destroyChart(combinedMonthChart);
+        destroyChart(combinedEmployeeChart);
+        destroyChart(combinedAttendanceChart);
+        destroyChart(studentMonthChart);
+        destroyChart(studentEmployeeChart);
+        destroyChart(studentAttendanceChart);
+        destroyChart(graduateMonthChart);
+        destroyChart(graduateEmployeeChart);
+        destroyChart(graduateAttendanceChart);
+        
+        // Reinitialize charts for active tab
+        setTimeout(() => {
+            if (activeTab === 'combined') {
+                initializeCombinedCharts();
+            } else if (activeTab === 'students') {
+                initializeStudentCharts();
+            } else if (activeTab === 'graduates') {
+                initializeGraduateCharts();
+            }
+        }, 100);
+    });
 });
 </script>
 {% endblock %}
