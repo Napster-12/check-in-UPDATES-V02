@@ -1,0 +1,313 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  body { background: #f4f4f4; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; min-height: 100vh; }
+  h2, h6, label, .fw-semibold { color: #1F2937 !important; }
+  .card { background: linear-gradient(145deg, #fff, #f0f0f0); border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; transition: transform 0.3s ease, box-shadow 0.3s ease; }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.15); }
+  .stat-card h6 { font-size: 0.9rem; font-weight: 600; color: #555; }
+  .stat-card h3 { font-size: 1.8rem; font-weight: 700; margin-top: 10px; color: #111827; }
+  .table thead { background-color: #6366F1; color: #fff; font-weight: 600; }
+  .table tbody tr:hover { background-color: rgba(99,102,241,0.1); cursor: pointer; }
+  .table td, .table th { vertical-align: middle; }
+  .form-select, input.form-control { color: #111827; }
+  .container { max-width: 1250px; }
+  @media(max-width: 768px) { .row { flex-direction: column; } }
+</style>
+
+<div class="container mt-5">
+  <h2 class="text-center fw-bold mb-4">Company Mentor Dashboard </h2>
+
+  <!-- Filters -->
+  <form id="filterForm" class="row g-3 mb-4 align-items-end" method="get">
+    <div class="col-md-3">
+      <label class="form-label fw-semibold">Filter by Student</label>
+      <select name="name" class="form-select" onchange="this.form.submit()">
+        <option value="">All Students</option>
+        {% for e in employees %}
+        <option value="{{ e.id }}" {% if request.args.get('name') == e.id|string %}selected{% endif %}>{{ e.fullname }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold">Filter by Month</label>
+      <select name="month" class="form-select" onchange="this.form.submit()">
+        <option value="">All Months</option>
+        {% for i in range(1,13) %}
+        <option value="{{ i }}" {% if request.args.get('month')|int == i %}selected{% endif %}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold">Filter by Year</label>
+      <select name="year" class="form-select" onchange="this.form.submit()">
+        <option value="">All Years</option>
+        {% for y in range(2023, now.year+1) %}
+        <option value="{{ y }}" {% if request.args.get('year')|int == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold">Filter by Day</label>
+      <input type="date" name="day" class="form-control" value="{{ request.args.get('day','') }}" onchange="this.form.submit()">
+    </div>
+  </form>
+
+  <!-- Stats Cards -->
+  <div class="row g-4 mb-4">
+    <div class="col-md-3"><div class="card stat-card text-center"><h6>Total Check-Ins</h6><h3>{{ total_checkins }}</h3></div></div>
+    <div class="col-md-3"><div class="card stat-card text-center"><h6>Earliest Check-In</h6><h3>{{ earliest_checkin.date if earliest_checkin else '-' }}</h3></div></div>
+    <div class="col-md-3"><div class="card stat-card text-center"><h6>Most Active Student</h6><h3>{{ most_active_student_name }}</h3></div></div>
+    <div class="col-md-3"><div class="card stat-card text-center"><h6>Least Active Student</h6><h3>{{ least_active_student_name }}</h3></div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="row g-4 mb-5">
+    <div class="col-md-4">
+      <div class="card"><h6 class="text-center fw-semibold mb-3">Monthly Check-Ins</h6><canvas id="monthChart"></canvas></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card"><h6 class="text-center fw-semibold mb-3">Check-Ins by Student</h6><canvas id="employeeChart"></canvas></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card"><h6 class="text-center fw-semibold mb-3">Attendance Overview</h6><canvas id="attendancePieChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Check-ins Table -->
+  <div class="card mb-5">
+    <h6 class="fw-semibold mb-3">All Student Check-In History</h6>
+       <div class="d-flex justify-content-end mb-2">
+  <a href="{{ url_for('export_checkins', name=request.args.get('name'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-success btn-sm">
+    Download Check-Ins
+  </a>
+</div>
+    <div class="table-responsive">
+   
+
+      <table class="table table-hover align-middle">
+        <thead><tr><th>#</th><th>Student</th><th>Date</th><th>Time</th><th>Comment</th></tr></thead>
+        <tbody>
+          {% for c in checkins_paginated.items %}
+          <tr>
+            <td>{{ loop.index + (checkins_paginated.page-1)*checkins_paginated.per_page }}</td>
+            <td>{{ c.user.fullname }}</td>
+            <td>{{ c.date }}</td>
+            <td>{{ c.slot }}</td>
+            <td>{{ c.comment }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center">No check-ins found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <div class="d-flex justify-content-center my-3">
+        {% if checkins_paginated.has_prev %}
+        <a href="{{ url_for('mentor_dashboard', page=checkins_paginated.prev_num, name=request.args.get('name'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-outline-primary btn-sm mx-1">Previous</a>
+        {% endif %}
+        <span class="mx-2">Page {{ checkins_paginated.page }} of {{ checkins_paginated.pages }}</span>
+        {% if checkins_paginated.has_next %}
+        <a href="{{ url_for('mentor_dashboard', page=checkins_paginated.next_num, name=request.args.get('name'), month=request.args.get('month'), year=request.args.get('year'), day=request.args.get('day')) }}" class="btn btn-outline-primary btn-sm mx-1">Next</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+<!-- Logbooks Table -->
+<div class="card mb-5">
+  <h6 class="fw-semibold mb-3">Student Logbook Submissions</h6>
+
+  <!-- Bulk Download Button -->
+  <div class="d-flex justify-content-end mb-2">
+    <a href="{{ url_for('mentor_download_all_logbooks') }}"
+       class="btn btn-success btn-sm">
+       ⬇ Download ALL Logbooks (ZIP)
+    </a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Student</th>
+          <th>File Name</th>
+          <th>Uploaded At</th>
+          <th>WBL1</th>
+          <th>WBL2</th>
+          <th>WBL3</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for a in assignments_paginated.items %}
+        <tr>
+          <td>{{ loop.index + (assignments_paginated.page - 1) * assignments_paginated.per_page }}</td>
+          <td>{{ a.user.fullname }}</td>
+          <td>{{ a.filename }}</td>
+          <td>{{ a.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+
+          <td>{% if a.wb1_submitted %}✅{% else %}-{% endif %}</td>
+          <td>{% if a.wbl2_submitted %}✅{% else %}-{% endif %}</td>
+          <td>{% if a.wbl3_submitted %}✅{% else %}-{% endif %}</td>
+
+          <td>
+            <a href="{{ url_for('mentor_download', assignment_id=a.id) }}"
+               class="btn btn-sm btn-primary">
+              Download
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted">
+            No submissions yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="d-flex justify-content-center my-3">
+      {% if assignments_paginated.has_prev %}
+      <a href="{{ url_for('mentor_dashboard',
+                          logpage=assignments_paginated.prev_num,
+                          name=request.args.get('name'),
+                          month=request.args.get('month'),
+                          year=request.args.get('year'),
+                          day=request.args.get('day')) }}"
+         class="btn btn-outline-primary btn-sm mx-1">
+        Previous
+      </a>
+      {% endif %}
+
+      <span class="mx-2">
+        Page {{ assignments_paginated.page }} of {{ assignments_paginated.pages }}
+      </span>
+
+      {% if assignments_paginated.has_next %}
+      <a href="{{ url_for('mentor_dashboard',
+                          logpage=assignments_paginated.next_num,
+                          name=request.args.get('name'),
+                          month=request.args.get('month'),
+                          year=request.args.get('year'),
+                          day=request.args.get('day')) }}"
+         class="btn btn-outline-primary btn-sm mx-1">
+        Next
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+
+</div>
+  <div class="card mb-5">
+  <h6 class="fw-semibold mb-3">Student Timesheet Submissions</h6>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Student</th>
+          <th>File Name</th>
+          <th>Uploaded At</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for ts in timesheets_paginated.items %}
+        <tr>
+          <td>{{ loop.index + (timesheets_paginated.page - 1) * timesheets_paginated.per_page }}</td>
+          <td>{{ ts.user.fullname }}</td>
+          <td>{{ ts.filename }}</td>
+          <td>{{ ts.upload_date.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td>
+            <a href="{{ url_for('mentor_download_timesheet', timesheet_id=ts.id) }}"
+               class="btn btn-sm btn-primary">
+               Download Timesheet
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center">No timesheets submitted yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <nav aria-label="Timesheet pagination">
+    <ul class="pagination justify-content-center mt-3">
+      {% if timesheets_paginated.has_prev %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('mentor_dashboard', page=timesheets_paginated.prev_num) }}">Previous</a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">Previous</span></li>
+      {% endif %}
+
+      {% for page_num in timesheets_paginated.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if page_num %}
+          {% if page_num == timesheets_paginated.page %}
+            <li class="page-item active"><span class="page-link">{{ page_num }}</span></li>
+          {% else %}
+            <li class="page-item"><a class="page-link" href="{{ url_for('mentor_dashboard', page=page_num) }}">{{ page_num }}</a></li>
+          {% endif %}
+        {% else %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+
+      {% if timesheets_paginated.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="{{ url_for('mentor_dashboard', page=timesheets_paginated.next_num) }}">Next</a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">Next</span></li>
+      {% endif %}
+    </ul>
+  </nav>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const monthCtx = document.getElementById('monthChart').getContext('2d');
+new Chart(monthCtx, {
+  type: 'bar',
+  data: {
+    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    datasets: [{ label: 'Check-Ins per Month', data: {{ month_counts|safe }}, backgroundColor: '#3b82f6' }]
+  },
+  options: { scales: { y: { beginAtZero:true } } }
+});
+
+const employeeCtx = document.getElementById('employeeChart').getContext('2d');
+new Chart(employeeCtx, {
+  type: 'bar',
+  data: {
+    labels: {{ student_counts.keys()|list|safe }},
+    datasets: [{ label: 'Check-Ins by Student', data: {{ student_counts.values()|list|safe }}, backgroundColor: '#f59e0b' }]
+  },
+  options: { scales: { y: { beginAtZero:true } } }
+});
+
+const attendanceCtx = document.getElementById('attendancePieChart').getContext('2d');
+new Chart(attendanceCtx, {
+  type: 'pie',
+  data: {
+    labels: {{ attendance_labels|safe }},
+    datasets: [{ data: {{ attendance_counts|safe }}, backgroundColor: ['#3b82f6','#f59e0b','#10b981','#6366F1','#F43F5E','#8B5CF6','#EC4899'] }]
+  }
+});
+</script>
+{% endblock %}
